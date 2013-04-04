@@ -56,6 +56,10 @@ inline void SYSCON_PDRUNCFG_SYSOSC(uint32_t val)
 {
 	((_PDRUNCFG*)&LPC_SYSCON->PDRUNCFG)->SYSOSC = val;
 }
+inline void SYSCON_PDRUNCFG_ADC(uint32_t val)
+{
+	((_PDRUNCFG*)&LPC_SYSCON->PDRUNCFG)->ADC = val;
+}
 inline void SYSCON_PDRUNCFG_SYSPLL(uint32_t val)
 {
 	((_PDRUNCFG*)&LPC_SYSCON->PDRUNCFG)->SYSPLL = val;
@@ -534,7 +538,7 @@ inline void TMR16B0_PWMC_PWMEN3(uint32_t val)
 }
 
 // LPC_IOCON->PIO0_8
-// I/O configuration for pin PIO0_8/MISO0/CT16B0_MAT0 (R/W)
+// I/O configuration for pin (1) PIO0_8/MISO0/CT16B0_MAT0 (R/W)
 struct _PIO0_8
 {
 	uint32_t FUNC : 3;	// pin function
@@ -562,4 +566,116 @@ inline void IOCON_PIO0_8_MODE(uint32_t val)
 	((_PIO0_8*)&LPC_IOCON->PIO0_8)->MODE = val;
 }
 
+// LPC_IOCON->R_PIO1_0
+// I/O configuration for pin TMS/PIO1_0/AD1/CT32B1_CAP0 (R/W)
+struct _PIO1_0
+{
+	uint32_t FUNC : 3;	// pin function
+	uint32_t MODE : 2;	// pull up/down resistor mode
+	uint32_t HYS : 1;		// Hysteresis.
+	uint32_t reserved0 : 1;
+	uint32_t ADMODE : 1;		// Selects Analog/Digital mode
+	uint32_t reserved1 : 2;
+	uint32_t OD : 1;		// Selects pseudo open-drain mode
+	uint32_t reserved2 : 21;
+};
 
+#define PIO1_0_FUNC_R 0x0		// reserved
+#define PIO1_0_FUNC_GPIO 0x1
+#define PIO1_0_FUNC_ADC 0x2
+#define PIO1_0_FUNC_TIMER 0x3
+inline void IOCON_PIO1_0_FUNC(uint32_t val)
+{
+	((_PIO1_0*)&LPC_IOCON->R_PIO1_0)->FUNC = val;
+}
+
+#define PIO1_0_MODE_NO_RESISTOR 0x0
+#define PIO1_0_MODE_PULLDOWN_RESISTOR 0x1
+#define PIO1_0_MODE_PULLUP_RESISTOR 0x2
+#define PIO1_0_MODE_REPEATER 0x3
+inline void IOCON_PIO1_0_MODE(uint32_t val)
+{
+	((_PIO1_0*)&LPC_IOCON->R_PIO1_0)->MODE = val;
+}
+
+#define PIO1_0_ADMODE_ANALOG_INPUT 0x0
+#define PIO1_0_ADMODE_DIGITAL 0x1
+inline void IOCON_PIO1_0_ADMODE(uint32_t val)
+{
+	((_PIO1_0*)&LPC_IOCON->R_PIO1_0)->ADMODE = val;
+}
+
+
+////  ADC
+
+// LPC_ADC->CR
+struct _ADC_CR
+{
+	uint32_t SEL : 8;	// Selects which of the AD7:0 pins is sampled and converted.
+	uint32_t CLKDIV : 8;	// PCLK divided by CLKDIV +1 to produce the ADC clock (<= 4.5MHz)
+	uint32_t BURST : 1;		// Burst mode.
+	uint32_t CLKS : 3;	// number of clocks used for each conversion (Burst mode)
+	uint32_t reserved0 : 4;
+	uint32_t START : 3;	// control whether/when A/D conversion is started (Burst mode)	uint32_t CLKS : 3;
+	uint32_t EDGE : 1;
+	uint32_t reserved1 : 4;
+};
+
+#define ADC_DISABLE 0x0
+#define ADC_ENABLE 0x1
+// first param is the ADn index, second param is enable/disable
+inline void ADC_CR_SEL(uint32_t idx, uint32_t val)
+{
+	if (val)
+		((_ADC_CR*)&LPC_ADC->CR)->SEL |= (1 << idx);
+	else
+		((_ADC_CR*)&LPC_ADC->CR)->SEL &= ~(1<< idx);
+}
+
+inline void ADC_CR_CLKDIV(uint32_t val)
+{
+	((_ADC_CR*)&LPC_ADC->CR)->CLKDIV = val;
+}
+
+#define ADC_BURST_DISABLE 0x0
+#define ADC_BURST_ENABLE 0x1
+inline void ADC_CR_BURST(uint32_t val)
+{
+	((_ADC_CR*)&LPC_ADC->CR)->BURST = val;
+}
+
+// When the BURST bit is 0, these bits control whether and when an A/D conversion is started
+#define ADC_START_STOP 0x0	// No start (this value should be used when clearing PDN to 0).
+#define ADC_START_START_NOW 0x1	// Start conversion now.
+#define ADC_START_ON_EDGE_PIO0_2 0x2		// Start conversion when edge on PIO0_2/SSEL/CT16B0_CAP0
+#define ADC_START_ON_EDGE_PIO1_5 0x3		// Start conversion when edge on PIO1_5/DIR/CT32B0_CAP0
+#define ADC_START_ON_EDGE_PIO1_6 0x4		// Start conversion when edge on CT32B0_MAT0
+#define ADC_START_ON_EDGE_PIO1_7 0x5		// Start conversion when edge on CT32B0_MAT1
+#define ADC_START_ON_EDGE_PIO0_8 0x6		// Start conversion when edge on CT16B0_MAT0
+#define ADC_START_ON_EDGE_PIO0_9 0x7		// Start conversion when edge on CT16B0_MAT1
+inline void ADC_CR_START(uint32_t val)
+{
+	((_ADC_CR*)&LPC_ADC->CR)->START = val;
+}
+
+// LPC_ADC->GDR
+// A/D Global Data Register
+// contains the result of the most recent A/D conversion
+// Note: Reading this register resets the DONE bit to zero
+struct _ADC_GDR
+{
+	uint32_t reserved0 : 6;
+	uint32_t V_VREF : 10;	// voltage sample
+	uint32_t reserved1 : 8;
+	uint32_t CHN : 3;	// channel from which the result bits V_VREF were converted.
+	uint32_t reserved2 : 3;
+	uint32_t OVERRUN : 1;
+	uint32_t DONE : 1;	// This bit is set to 1 when an A/D conversion completes.
+};
+
+#define ADC_GDR_DONE	0x1
+
+inline _ADC_GDR ADC_GDR_Sample()
+{
+	return (_ADC_GDR&)LPC_ADC->GDR;
+}

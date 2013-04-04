@@ -163,7 +163,7 @@
             <RunIndependent>0</RunIndependent>
             <UpdateFlashBeforeDebugging>1</UpdateFlashBeforeDebugging>
             <Capability>1</Capability>
-            <DriverSelection>4105</DriverSelection>
+            <DriverSelection>4107</DriverSelection>
           </Flash1>
           <Flash2>BIN\coocox-agdi.dll</Flash2>
           <Flash3>"" ()</Flash3>

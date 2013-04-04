@@ -161,3 +161,21 @@ pip-log.txt
 
 # Mac crap
 .DS_Store
+
+######
+## KEIL MDK-ARM
+######
+*.iex
+*.crf
+*.d
+*.o
+*.uvgui*
+*.uvopt*
+*.dep
+*.bak
+*.lst
+*.axf
+*.htm
+*.lnp
+*.map
+*.tra

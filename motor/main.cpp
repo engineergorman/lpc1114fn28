@@ -1,5 +1,6 @@
 #include <LPC11xx.h>
 #include "../core/core.h"
+#include "stdio.h"
 
 uint32_t SystemFrequency;
 
@@ -56,6 +57,21 @@ void SetupPWM()
 	
 }
 
+inline int min(int a, int b)
+{
+	if (a < b) 
+		return a; 
+	else 
+		return b;
+}
+inline int max(int a, int b)
+{
+	if (a > b) 
+		return a; 
+	else 
+		return b;
+}
+
 int main(void)
 {
 	// Set system frequency to 48MHz
@@ -76,6 +92,71 @@ int main(void)
 	// PWM output (pin 1) is tied to 1,2EN on H-bridge (SN754410 Quad Half H-bridge)	// 
 	SetupPWM();
 
+	// Setup ADC
+	// My geared motor has a optical wheel,
+	// and sensor with analog output.  this
+	// code is just a test to see if the values
+	// coming from the ADC are good... and
+	// it works!
+	
+	SYSCON_PDRUNCFG_ADC(POWER_UP);
+	SYSCON_SYSAHBCLKCTRL_ADC(SYSAHBCLKCTRL_ENABLE);
+	IOCON_PIO1_0_FUNC(PIO1_0_FUNC_ADC);
+	//IOCON_PIO1_0_MODE(PIO1_0_MODE_NO_RESISTOR);
+	IOCON_PIO1_0_ADMODE(PIO1_0_ADMODE_ANALOG_INPUT);
+	
+	ADC_CR_SEL(1, ADC_ENABLE);	// enable sampling on AD1 (pin 9)
+	ADC_CR_CLKDIV(SystemFrequency / 4500000);		// ADC clock must be <= 4.5Mhz
+	ADC_CR_START(ADC_START_START_NOW);	// take a sample
+	
+	// sample the ADC and count the edge transitions
+	// when 50 edges are detected, reverse the direction
+	// on the motor.
+	int revs = 0;
+	bool high = false;
+	bool dir = false;
+	while (1)
+	{
+		revs = 0;
+		high = false;
+		while (revs < 50)
+		{
+			_ADC_GDR sample = ADC_GDR_Sample();	// get a sample
+			if (sample.DONE)
+			{
+				int v = sample.V_VREF;
+				ADC_CR_START(ADC_START_START_NOW);	// trigger another sampling
+				if (high && v < 0x1FF)
+				{
+					high = false;
+					++revs;
+				}
+				else if (!high && v >= 0x1FF)
+				{
+					high = true;
+					++revs;
+				}
+			}
+		}
+		dir = !dir;
+		if (dir)
+		{
+			TMR16B0_MR0_Set(100);	// turn off motor
+			Delay(700);	// wait for gears to stop spinning
+			GPIO1_DATA(5, 0);	// change direction
+			TMR16B0_MR0_Set(0);	// turn on motor
+		}
+		else
+		{
+			TMR16B0_MR0_Set(100);
+			Delay(700);
+			GPIO1_DATA(5, 1);
+			TMR16B0_MR0_Set(0);
+		}
+	}
+	
+#if 0
+	// old PWM test
 	int fade = 25;
 	int hold = 1000;
 	int maxamt = 100;
@@ -102,4 +183,5 @@ int main(void)
 
 		Delay(hold);	
 	}
+#endif	
 }
