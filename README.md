@@ -7,7 +7,7 @@ internal oscillator.  Features: 32K flash, 4K RAM, 22 GPIO, UART,
 SPI, I2C, ADC, DAC, PWM, nested interrupts, etc.  The full datasheet is
 here:  http://www.nxp.com/documents/data_sheet/LPC111X.pdf
 
-This project is exploring the use of C++ to create a highy readable thin hardware abstraction
+This project is exploring the use of C++ to create a highy readable, yet thin hardware abstraction
 layer for setting up the chip's core features and perhipherals.  Current
 examples include:
 * blinky:  Configure the PLL for 48Mhz operation using the built in IRC
@@ -102,7 +102,7 @@ programmer/SWD debugger ($38).  You can use any development environment
 suitable for LPC11xx.  There are some excellent open source solutions,
 such as the one at CooCox.org.
 
-My prefernce is to use the free version of Keil's MDK-ARM IDE with Olimex's
+My preference is to use the free version of Keil's MDK-ARM IDE with Olimex's
 ARM-JTAG-COOCOX programmer/SWD debugger.
 
 # License

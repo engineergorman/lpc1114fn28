@@ -104,25 +104,56 @@ inline int max(int a, int b)
 		return b;
 }
 
-volatile int32_t g_motorPos[2];
-volatile int32_t g_motorInc[2];
+volatile int32_t g_motorPos;
+volatile unsigned long g_motorTime;
+
+volatile int g_transitionTime;	// time stamp of recent interrupt
+volatile bool g_inTransition;	// edge transition occured, waiting for elasped time
+
+volatile int32_t g_motorInc;
+
+// interrupt should only be valid if the previous interrupt occurred 
+// a number of system ticks ago.
+
+// TODO:  not sure if the logic is correct.  if the transition was noisy
+//	then the condition below is not satisfied until the next noisy transition.
+
+// it's almost like when we have a transition, we need to schedule a timer interrupt
+//  that occurs in q number of cycles.  if another edge comes in before the timer
+//  then the timer is cleared.  we are looking for both a transition and a delay.
+//  it would be simplest to do this without schduling a timer... just use history.
 
 extern "C" void PIOINT1_IRQHandler(void)
 {
-	// determine which pin was triggered
-	// do noise filtering
+	unsigned long systickcnt = SysTickCnt;
+
 	if (GPIO1_MIS(0))
 	{
-		g_motorPos[0] += g_motorInc[0];	
+		if (g_inTransition)
+		{
+			unsigned long elaspedTime = g_transitionTime - systickcnt;
+			if (elaspedTime > 2 /*ms*/)
+			{
+				g_motorPos += g_motorInc;
+				g_motorTime = systickcnt;
+				// we are still in transition, we just need to reset the transition timer
+				g_transitionTime = systickcnt;
+			}
+			else
+			{
+				g_inTransition = false;
+			}
+		}
+		else
+		{
+			g_inTransition = true;
+			g_transitionTime = systickcnt;
+		}
+		
 		GPIO1_IC(0);
-		__NOP();__NOP();
 	}
-	if (GPIO1_MIS(1))
-	{
-		g_motorPos[1] += g_motorInc[1];	
-		GPIO1_IC(1);
-		__NOP();__NOP();
-	}
+	
+	__NOP();__NOP();
 
 }
 
