@@ -23,6 +23,7 @@
 
 #include <LPC11xx.h>
 #include "../core/core.h"
+#include "stdio.h"
 
 uint32_t SystemFrequency;
 
@@ -37,23 +38,6 @@ extern "C" void SystemInit(void)
 }
 
 
-volatile unsigned long SysTickCnt;      // SysTick Counter
-
-// SysTick Interrupt Handler (1ms)
-extern "C" void SysTick_Handler(void) 
-{           
-  SysTickCnt++;
-}
-
-void Delay(unsigned long tick)
-{
-  unsigned long systickcnt;
-
-  systickcnt = SysTickCnt;
-	// TODO: handle when SysTickCnt overflows
-  while ((SysTickCnt - systickcnt) < tick);
-}
-
 int main(void)
 {
 	// Set system frequency to 48MHz
@@ -65,22 +49,24 @@ int main(void)
   SysTick_Config(SystemFrequency/1000 - 1); // Generate interrupt each 1 ms
 	
 	// set direction on port 0_7 (pin 28) to output
-	GPIO0_DIR(7, GPIO_OUTPUT);
+	GPIO0_DIR(7, GPIO_OUTPUT);	
+	GPIO0_DATA(7, 1);  // turn on diagnostic led
 	
-	while (1)
-	{
-		int j;
-		for (j = 0; j < 10; ++j)
-		{
-			Delay(50);
-			
-			GPIO0_DATA(7, 1); // turn on LED on pin 28
+	#if 0
+	// Work In Progress... not complete
+	
+	SYSCON_PDRUNCFG_ADC(POWER_UP);
+	SYSCON_SYSAHBCLKCTRL_ADC(SYSAHBCLKCTRL_ENABLE);
+	IOCON_PIO1_0_FUNC(PIO1_0_FUNC_ADC);
+	//IOCON_PIO1_0_MODE(PIO1_0_MODE_NO_RESISTOR);
+	IOCON_PIO1_0_ADMODE(PIO1_0_ADMODE_ANALOG_INPUT);
+	
+	ADC_CR_SEL(1, ADC_ENABLE);	// enable sampling on AD1 (pin 9)
+	ADC_CR_CLKDIV(SystemFrequency / 4500000);		// ADC clock must be <= 4.5Mhz
+	ADC_CR_BURST(ADC_BURST_ENABLE);	// enable burst mode
+	ADC_CR_CLKS(ADC_CLKS_5);		// 4 bits accuracy
+	ADC_CR_START(ADC_START_STOP);	// 000 bits in START field is required
 
-			Delay(50);
-
-			GPIO0_DATA(7, 0);		// turn off LED
-		}
-
-		Delay(1000);	
-	}
+	// TODO: setup ADC interrupts and handlers to capture the reoccuring samples
+	#endif
 }

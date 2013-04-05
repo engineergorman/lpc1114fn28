@@ -7,19 +7,24 @@ internal oscillator.  Features: 32K flash, 4K RAM, 22 GPIO, UART,
 SPI, I2C, ADC, DAC, PWM, nested interrupts, etc.  The full datasheet is
 here:  http://www.nxp.com/documents/data_sheet/LPC111X.pdf
 
-This project is exploring the use of C++ to create a clean abstraction
+This project is exploring the use of C++ to create a highy readable thin hardware abstraction
 layer for setting up the chip's core features and perhipherals.  Current
 examples include:
-* Configure the PLL for 48Mhz operation using the built in IRC
-* Configure 16-bit Timer 0 for PWM operation
+* blinky:  Configure the PLL for 48Mhz operation using the built in IRC
+* pwm:  Configure 16-bit Timer 0 for PWM operation
+* adc_simple:  Simple (software mode) Analog to Digital conversion 
+* adc_burstmode:  Continuous sample (burst mode) Analog to Digital conversion (started but not finished)
+* gpio_interrupt:  GPIO external interrupt
+* motor:  advanced motor control (a work in progress). uses PWM to control motor speed, 
+GPIO ports to control direction, external interrupt to sense motor speed (via IR sensor and optical wheel)
 
 # Example
-There are some comments about ARM being notoriously difficult to program.  
+Some people may find that the ARM Cortex uProc is difficult to program when compared to simpler 8-bit microprocessors.
 With more capability there is usually more complexity.  But with the right 
-abstraction layer(s) in place, this complexity can be mitigated.  For example, 
-most of the examples I've come across use standard bit shifting and masking 
-to set the registers.  This makes the code very hard to read and also error 
-prone.  My preference is to use C++ and overlay the uint32_t register with a 
+abstraction layer(s) in place, this complexity is easily mitigated.  For example, 
+most of the samples on the web use standard bit shifting and masking 
+to set the hardware configuration registers.  This makes the code very hard to read and also error 
+prone.  My preference is to use C++ and overlay the hardware register with a 
 structure containing named bitfields. The bitfields are written to look like 
 the LPC11xx User Manual, so there is less room for error. For example:
 
@@ -81,17 +86,20 @@ these inline functions:
     }
 ```
 
-Of course this function could be wrapped in another abstraction, 
-but at least the foundation is easy to read.  
+Of course this function could be wrapped in another abstraction layer, 
+but at least the code interfacing with the hardware is easy to read.  
 
-If you want to help build out the abstraction for all 
-functions on the chip please let me know.
+If you want to contribute to this project please let me know.
 
+Cheers,
+Chris Gorman
+engineergorman@gmail.com
+http://engineergorman.com/
 
 # Requirements
-I purchased my LPC114 ($2.50) from Mouser along with an ARM-JTAG-COOCOX 
+I purchased my LPC1114FN28/102 ($2.50) from Mouser along with an ARM-JTAG-COOCOX 
 programmer/SWD debugger ($38).  You can use any development environment 
-suitable for the LPC1114FN28.  There are some excellent open source solutions,
+suitable for LPC11xx.  There are some excellent open source solutions,
 such as the one at CooCox.org.
 
 My prefernce is to use the free version of Keil's MDK-ARM IDE with Olimex's

@@ -23,7 +23,6 @@
 
 #include <LPC11xx.h>
 #include "../core/core.h"
-#include "stdio.h"
 
 uint32_t SystemFrequency;
 
@@ -46,7 +45,6 @@ extern "C" void SysTick_Handler(void)
   SysTickCnt++;
 }
 
-
 void Delay(unsigned long tick)
 {
   unsigned long systickcnt;
@@ -56,7 +54,6 @@ void Delay(unsigned long tick)
   while ((SysTickCnt - systickcnt) < tick);
 }
 
-volatile uint32_t* pMotorPWMArray[2];
 
 void SetupPWM()
 {
@@ -78,52 +75,6 @@ void SetupPWM()
 	TMR16B0_PWMC_PWMEN0(PWMC_ENABLE);
 	// enable counter
 	TMR16B0_TCR_CEn(TCR_ENABLE);	
-	
-	pMotorPWMArray[0] = &LPC_TMR16B0->MR0;
-	pMotorPWMArray[1] = &LPC_TMR16B0->MR1;
-}
-
-
-inline void SetMotorSpeed(int index, uint32_t speed)
-{
-	*(pMotorPWMArray[index]) = speed;  // as a percentage
-}
-
-inline int min(int a, int b)
-{
-	if (a < b) 
-		return a; 
-	else 
-		return b;
-}
-inline int max(int a, int b)
-{
-	if (a > b) 
-		return a; 
-	else 
-		return b;
-}
-
-volatile int32_t g_motorPos[2];
-volatile int32_t g_motorInc[2];
-
-extern "C" void PIOINT1_IRQHandler(void)
-{
-	// determine which pin was triggered
-	// do noise filtering
-	if (GPIO1_MIS(0))
-	{
-		g_motorPos[0] += g_motorInc[0];	
-		GPIO1_IC(0);
-		__NOP();__NOP();
-	}
-	if (GPIO1_MIS(1))
-	{
-		g_motorPos[1] += g_motorInc[1];	
-		GPIO1_IC(1);
-		__NOP();__NOP();
-	}
-
 }
 
 int main(void)
@@ -146,23 +97,31 @@ int main(void)
 	// PWM output (pin 1) is tied to 1,2EN on H-bridge (SN754410 Quad Half H-bridge)	// 
 	SetupPWM();
 
-	// setup interrupts on PIO1_0
-	IOCON_PIO1_0_MODE(PIO1_0_MODE_NO_RESISTOR);
-	GPIO1_DIR(0, GPIO_INPUT);	
-	GPIO1_IS(0, GPIO_EDGE_SENSITIVE);
-	GPIO1_IBE(0, GPIO_BOTH_EDGES);
-	GPIO1_IE(0, GPIO_INTERRUPT_ENABLE);
-
-  NVIC_EnableIRQ(EINT1_IRQn);
-
-	volatile int val = 0;
-	volatile int val2 = 0;
+	// PWM test
+	int fade = 25;
+	int hold = 1000;
+	int maxamt = 100;
+	int minamt = 25;
 	
 	while (1)
 	{
-		val = GPIO1_DATA(0);
-		val2 = g_motorPos[0];
-		Delay(1000);
+		int j;
+		for (j = maxamt; j >= minamt; --j)
+		{
+			Delay(fade);
+			// set pulse width (this controls speed of motor)
+			TMR16B0_MR0_Set(j);
+		}
+
+		Delay(hold);	
+
+		for (j = minamt; j <= maxamt; ++j)
+		{
+			Delay(fade);
+			// set pulse width
+			TMR16B0_MR0_Set(j);
+		}
+
+		Delay(hold);	
 	}
-	
 }

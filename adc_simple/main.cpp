@@ -23,6 +23,7 @@
 
 #include <LPC11xx.h>
 #include "../core/core.h"
+#include "stdio.h"
 
 uint32_t SystemFrequency;
 
@@ -37,23 +38,6 @@ extern "C" void SystemInit(void)
 }
 
 
-volatile unsigned long SysTickCnt;      // SysTick Counter
-
-// SysTick Interrupt Handler (1ms)
-extern "C" void SysTick_Handler(void) 
-{           
-  SysTickCnt++;
-}
-
-void Delay(unsigned long tick)
-{
-  unsigned long systickcnt;
-
-  systickcnt = SysTickCnt;
-	// TODO: handle when SysTickCnt overflows
-  while ((SysTickCnt - systickcnt) < tick);
-}
-
 int main(void)
 {
 	// Set system frequency to 48MHz
@@ -61,26 +45,57 @@ int main(void)
 
 	// Enable clock to IO Configuration block.  Needed for UART, SPI, I2C, etc...
 	SYSCON_SYSAHBCLKCTRL_IOCON(SYSAHBCLKCTRL_ENABLE);
-	
-  SysTick_Config(SystemFrequency/1000 - 1); // Generate interrupt each 1 ms
-	
+		
 	// set direction on port 0_7 (pin 28) to output
-	GPIO0_DIR(7, GPIO_OUTPUT);
+	GPIO0_DIR(7, GPIO_OUTPUT);	
+	GPIO0_DATA(7, 1);  // turn on diagnostic led
 	
+	// Setup ADC
+	// My geared motor has an optical wheel,
+	// and sensor with analog output.  this
+	// code is just a test to see if the values
+	// coming from the ADC are good... and
+	// it works!
+	
+	SYSCON_PDRUNCFG_ADC(POWER_UP);
+	SYSCON_SYSAHBCLKCTRL_ADC(SYSAHBCLKCTRL_ENABLE);
+	IOCON_PIO1_0_FUNC(PIO1_0_FUNC_ADC);
+	IOCON_PIO1_0_ADMODE(PIO1_0_ADMODE_ANALOG_INPUT);
+	
+	ADC_CR_SEL(1, ADC_ENABLE);	// enable sampling on AD1 (pin 9)
+	ADC_CR_CLKDIV(SystemFrequency / 4500000);		// ADC clock must be <= 4.5Mhz
+	ADC_CR_START(ADC_START_START_NOW);	// take a sample
+	
+	// sample the ADC and count the edge transitions
+	int revs = 0;
+	bool high = false;
+	uint32_t ledtoggle = 1;
 	while (1)
 	{
-		int j;
-		for (j = 0; j < 10; ++j)
+		revs = 0;
+		high = false;
+		while (revs < 10)
 		{
-			Delay(50);
-			
-			GPIO0_DATA(7, 1); // turn on LED on pin 28
-
-			Delay(50);
-
-			GPIO0_DATA(7, 0);		// turn off LED
+			_ADC_GDR sample = ADC_GDR_Sample();	// get a sample
+			if (sample.DONE)
+			{
+				int v = sample.V_VREF;
+				ADC_CR_START(ADC_START_START_NOW);	// trigger another sampling
+				if (high && v < 0x1FF)
+				{
+					high = false;
+					++revs;
+				}
+				else if (!high && v >= 0x1FF)
+				{
+					high = true;
+					++revs;
+				}
+			}
 		}
-
-		Delay(1000);	
+		
+		// we just counted 10 transitions, lets toggle the led
+		ledtoggle = (~ ledtoggle) & 0x1;
+		GPIO0_DATA(7, ledtoggle);  // toggle diagnostic led
 	}
 }

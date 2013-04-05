@@ -1,4 +1,31 @@
+// The engineergorman\lpc1114fn28 framework is licensed under the MIT license:
+// 
+// Copyright (C) 2013 by Chris Gorman
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+
+
 #include <LPC11xx.h>
+
+/////////////////////////////////////////////////
+//	LPC_FLASHCTRL Section
+/////////////////////////////////////////////////
 
 // LPC_FLASHCTRL->FLASHCFG
 struct _FLASHCFG
@@ -15,6 +42,10 @@ inline void FLASHCTRL_FLASHCFG_FLASHTIM(uint32_t val)
 {
 	((_FLASHCFG*)&LPC_FLASHCTRL->FLASHCFG)->FLASHTIM = val;
 }
+
+/////////////////////////////////////////////////
+//	LPC_SYSCON Section
+/////////////////////////////////////////////////
 
 // LPC_SYSCON->SYSOSCCTRL
 struct _SYSOSCCTRL
@@ -127,7 +158,6 @@ inline void WAIT_SYSCON_SYSPLLSTAT_LOCK()
 	while( PLL_NOTLOCKED == ((_SYSPLLSTAT*)&LPC_SYSCON->SYSPLLSTAT)->LOCK );
 }
 
-
 // LPC_SYSCON->MAINCLKSEL
 struct _MAINCLKSEL
 {
@@ -184,6 +214,7 @@ struct _SYSAHBCLKCTRL
 	uint32_t SSP1 : 1;
 	uint32_t reserved1 : 13;
 };
+
 #define SYSAHBCLKCTRL_DISABLE 0x0
 #define SYSAHBCLKCTRL_ENABLE 0x1
 
@@ -249,6 +280,10 @@ inline void SYSCON_SYSAHBCLKDIV(uint32_t val)
 	((_SYSAHBCLKDIV*)&LPC_SYSCON->SYSAHBCLKDIV)->DIV = val;
 }
 
+/////////////////////////////////////////////////
+//	LPC_GPIOn Section
+/////////////////////////////////////////////////
+
 // LPC_GPIO0->DIR
 struct _GPIODIR
 {
@@ -267,12 +302,6 @@ inline void GPIO0_DIR(uint32_t pin, uint32_t dir)
 		((_GPIODIR*)&LPC_GPIO0->DIR)->IO &= ~ (1 << pin);
 }
 
-inline void GPIO0_DATA( uint32_t pin, uint32_t val )
-{
-  LPC_GPIO0->MASKED_ACCESS[(1 << pin)] = (val << pin);
-}
-
-// LPC_GPIO1->DIR
 inline void GPIO1_DIR(uint32_t pin, uint32_t dir)
 {
 	if (dir)
@@ -281,14 +310,185 @@ inline void GPIO1_DIR(uint32_t pin, uint32_t dir)
 		((_GPIODIR*)&LPC_GPIO1->DIR)->IO &= ~ (1 << pin);
 }
 
+// LPC_GPIO0->IS
+// Interrupt sense Register (R/W)
+struct _GPIOIS
+{
+	uint32_t ISENSE : 12;	// Selects interrupt on pin x as level or edge sensitive
+	uint32_t reserved : 20;	
+};
+
+#define GPIO_EDGE_SENSITIVE	0x0
+#define GPIO_LEVEL_SENSITIVE	0x1
+
+inline void GPIO0_IS(uint32_t pin, uint32_t dir)
+{
+	if (dir)
+		((_GPIOIS*)&LPC_GPIO0->IS)->ISENSE |= 1 << pin;
+	else
+		((_GPIOIS*)&LPC_GPIO0->IS)->ISENSE &= ~ (1 << pin);
+}
+
+inline void GPIO1_IS(uint32_t pin, uint32_t dir)
+{
+	if (dir)
+		((_GPIOIS*)&LPC_GPIO1->IS)->ISENSE |= 1 << pin;
+	else
+		((_GPIOIS*)&LPC_GPIO1->IS)->ISENSE &= ~ (1 << pin);
+}
+
+// LPC_GPIO0->IBE
+// Interrupt both edges Register (R/W)
+struct _GPIOIBE
+{
+	uint32_t IBE : 12;	// Selects interrupt on pin x to be triggered on both edges
+	uint32_t reserved : 20;	
+};
+
+#define GPIO_SINGLE_EDGE	0x0
+#define GPIO_BOTH_EDGES 0x1
+
+inline void GPIO0_IBE(uint32_t pin, uint32_t dir)
+{
+	if (dir)
+		((_GPIOIBE*)&LPC_GPIO0->IBE)->IBE |= 1 << pin;
+	else
+		((_GPIOIBE*)&LPC_GPIO0->IBE)->IBE &= ~ (1 << pin);
+}
+
+inline void GPIO1_IBE(uint32_t pin, uint32_t dir)
+{
+	if (dir)
+		((_GPIOIBE*)&LPC_GPIO1->IBE)->IBE |= 1 << pin;
+	else
+		((_GPIOIBE*)&LPC_GPIO1->IBE)->IBE &= ~ (1 << pin);
+}
+
+// LPC_GPIO0->IEV
+// Interrupt Event Register  (R/W)
+struct _GPIOIEV
+{
+	uint32_t IEV : 12;	// Selects interrupt on pin x to be triggered rising or falling edges
+	uint32_t reserved : 20;	
+};
+
+// If GPIO_EDGE_SENSITIVE set, then:
+#define GPIO_FALLING_EDGE	0x0
+#define GPIO_RISING_EDGES 0x1
+// If GPIO_LEVEL_SENSITIVE set, then:
+#define GPIO_LOW_LEVEL 0x0
+#define GPIO_HIGH_LEVEL 0x1
+
+inline void GPIO0_IEV(uint32_t pin, uint32_t dir)
+{
+	if (dir)
+		((_GPIOIEV*)&LPC_GPIO0->IEV)->IEV |= 1 << pin;
+	else
+		((_GPIOIEV*)&LPC_GPIO0->IEV)->IEV &= ~ (1 << pin);
+}
+
+inline void GPIO1_IEV(uint32_t pin, uint32_t dir)
+{
+	if (dir)
+		((_GPIOIEV*)&LPC_GPIO1->IEV)->IEV |= 1 << pin;
+	else
+		((_GPIOIEV*)&LPC_GPIO1->IEV)->IEV &= ~ (1 << pin);
+}
+
+// LPC_GPIO0->IE
+// Interrupt mask Register (R/W) 
+struct _GPIOIE
+{
+	uint32_t MASK : 12;	// Selects interrupt on pin x to be masked
+	uint32_t reserved : 20;	
+};
+
+#define GPIO_INTERRUPT_DISABLE 0x0
+#define GPIO_INTERRUPT_ENABLE 0x1
+
+inline void GPIO0_IE(uint32_t pin, uint32_t dir)
+{
+	if (dir)
+		((_GPIOIE*)&LPC_GPIO0->IE)->MASK |= 1 << pin;
+	else
+		((_GPIOIE*)&LPC_GPIO0->IE)->MASK &= ~ (1 << pin);
+}
+
+inline void GPIO1_IE(uint32_t pin, uint32_t dir)
+{
+	if (dir)
+		((_GPIOIE*)&LPC_GPIO1->IE)->MASK |= 1 << pin;
+	else
+		((_GPIOIE*)&LPC_GPIO1->IE)->MASK &= ~ (1 << pin);
+}
+
+// LPC_GPIO0->MIS
+// GPIO masked interrupt status register (R)
+struct _GPIOMIS
+{
+	uint32_t MASK : 12;	// interrupt status bits
+	uint32_t reserved : 20;	
+};
+
+// returns 1 if interrupt on GPIO0_x; 0 if no interrupt (or was masked)
+inline uint32_t GPIO0_MIS(uint32_t pin)
+{
+	return (((_GPIOMIS*)&LPC_GPIO0->MIS)->MASK >> pin) & 0x1;
+}
+
+inline uint32_t GPIO1_MIS(uint32_t pin)
+{
+	return (((_GPIOMIS*)&LPC_GPIO1->MIS)->MASK >> pin) & 0x1;
+}
+
+// LPC_GPIO0->IC
+// GPIO interrupt clear register (W)
+struct _GPIOIC
+{
+	uint32_t CLR : 12;	// clears the interrupt edge detection logic
+	uint32_t reserved : 20;	
+};
+
+// clears interrupt on pin x
+//		Note:  It is recommended to add two NOPs after the clear of the interrupt edge 
+//		detection logic before the exit of the interrupt service routine, ex: __NOP();__NOP();
+
+inline void GPIO0_IC(uint32_t pin)
+{
+	((_GPIOIC*)&LPC_GPIO0->IC)->CLR |= 1 << pin;
+}
+
+inline void GPIO1_IC(uint32_t pin)
+{
+	((_GPIOIC*)&LPC_GPIO1->IC)->CLR |= 1 << pin;
+}
+
+// LPC_GPIO0->MASKED_ACCESS
+// write value at GPIOn, pin = n
+inline void GPIO0_DATA( uint32_t pin, uint32_t val )
+{
+  LPC_GPIO0->MASKED_ACCESS[(1 << pin)] = (val << pin);
+}
+// read value at GPIOn, pin = n
+inline uint32_t GPIO0_DATA( uint32_t pin )
+{
+  return LPC_GPIO0->MASKED_ACCESS[(1 << pin)];
+}
+
 inline void GPIO1_DATA( uint32_t pin, uint32_t val )
 {
   LPC_GPIO1->MASKED_ACCESS[(1 << pin)] = (val << pin);
 }
 
-//
-// 16-bit Timer 0
-//
+inline uint32_t GPIO1_DATA( uint32_t pin )
+{
+  return LPC_GPIO1->MASKED_ACCESS[(1 << pin)];
+}
+
+/////////////////////////////////////////////////
+//	LPC_TMR16Bn Section
+//    16-bit Timers
+/////////////////////////////////////////////////
 
 // LPC_TMR16B0->TCR
 // The Timer Control Register (TCR) is used to control the operation of the counter/timer.
@@ -537,6 +737,10 @@ inline void TMR16B0_PWMC_PWMEN3(uint32_t val)
 	((_PWMC*)&LPC_TMR16B0->PWMC)->PWMEN3 = val;
 }
 
+/////////////////////////////////////////////////
+//	LPC_IOCON Section
+/////////////////////////////////////////////////
+
 // LPC_IOCON->PIO0_8
 // I/O configuration for pin (1) PIO0_8/MISO0/CT16B0_MAT0 (R/W)
 struct _PIO0_8
@@ -567,7 +771,7 @@ inline void IOCON_PIO0_8_MODE(uint32_t val)
 }
 
 // LPC_IOCON->R_PIO1_0
-// I/O configuration for pin TMS/PIO1_0/AD1/CT32B1_CAP0 (R/W)
+// I/O configuration for pin R_PIO1_0/AD1/CT32B1_CAP0 (R/W)
 struct _PIO1_0
 {
 	uint32_t FUNC : 3;	// pin function
@@ -605,8 +809,49 @@ inline void IOCON_PIO1_0_ADMODE(uint32_t val)
 	((_PIO1_0*)&LPC_IOCON->R_PIO1_0)->ADMODE = val;
 }
 
+// LPC_IOCON->R_PIO1_1
+// I/O configuration for pin R_PIO1_1/AD2/CT32B1_MAT0 (R/W)
+struct _PIO1_1
+{
+	uint32_t FUNC : 3;	// pin function
+	uint32_t MODE : 2;	// pull up/down resistor mode
+	uint32_t HYS : 1;		// Hysteresis.
+	uint32_t reserved0 : 1;
+	uint32_t ADMODE : 1;		// Selects Analog/Digital mode
+	uint32_t reserved1 : 2;
+	uint32_t OD : 1;		// Selects pseudo open-drain mode
+	uint32_t reserved2 : 21;
+};
 
-////  ADC
+#define PIO1_1_FUNC_R 0x0		// reserved
+#define PIO1_1_FUNC_GPIO 0x1
+#define PIO1_1_FUNC_ADC 0x2
+#define PIO1_1_FUNC_TIMER 0x3
+inline void IOCON_PIO1_1_FUNC(uint32_t val)
+{
+	((_PIO1_1*)&LPC_IOCON->R_PIO1_1)->FUNC = val;
+}
+
+#define PIO1_1_MODE_NO_RESISTOR 0x0
+#define PIO1_1_MODE_PULLDOWN_RESISTOR 0x1
+#define PIO1_1_MODE_PULLUP_RESISTOR 0x2
+#define PIO1_1_MODE_REPEATER 0x3
+inline void IOCON_PIO1_1_MODE(uint32_t val)
+{
+	((_PIO1_1*)&LPC_IOCON->R_PIO1_1)->MODE = val;
+}
+
+#define PIO1_1_ADMODE_ANALOG_INPUT 0x0
+#define PIO1_1_ADMODE_DIGITAL 0x1
+inline void IOCON_PIO1_1_ADMODE(uint32_t val)
+{
+	((_PIO1_1*)&LPC_IOCON->R_PIO1_1)->ADMODE = val;
+}
+
+
+/////////////////////////////////////////////////
+//	LPC_ADC Section
+/////////////////////////////////////////////////
 
 // LPC_ADC->CR
 struct _ADC_CR
@@ -642,6 +887,19 @@ inline void ADC_CR_CLKDIV(uint32_t val)
 inline void ADC_CR_BURST(uint32_t val)
 {
 	((_ADC_CR*)&LPC_ADC->CR)->BURST = val;
+}
+
+#define ADC_CLKS_11	0x0		// 10 bits accuracy
+#define ADC_CLKS_10	0x1		// 9 bits accuracy
+#define ADC_CLKS_9	0x2		// 8 bits accuracy
+#define ADC_CLKS_8	0x3		// 7 bits accuracy
+#define ADC_CLKS_7	0x4		// 6 bits accuracy
+#define ADC_CLKS_6	0x5		// 5 bits accuracy
+#define ADC_CLKS_5	0x6		// 4 bits accuracy
+#define ADC_CLKS_4	0x7		// 3 bits accuracy
+inline void ADC_CR_CLKS(uint32_t val)
+{
+	((_ADC_CR*)&LPC_ADC->CR)->CLKS = val;
 }
 
 // When the BURST bit is 0, these bits control whether and when an A/D conversion is started
