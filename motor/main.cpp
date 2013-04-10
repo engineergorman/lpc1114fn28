@@ -25,6 +25,15 @@
 #include "../core/core.h"
 #include "stdio.h"
 
+typedef uint64_t U64;
+typedef int64_t I64;
+typedef uint32_t U32;
+typedef int32_t I32;
+
+#define TRUE 1
+#define FALSE 0
+typedef int BOOL;
+
 uint32_t SystemFrequency;
 
 
@@ -38,7 +47,7 @@ extern "C" void SystemInit(void)
 }
 
 
-volatile unsigned long SysTickCnt;      // SysTick Counter
+volatile U64 SysTickCnt;      // SysTick Counter
 
 // SysTick Interrupt Handler (1ms)
 extern "C" void SysTick_Handler(void) 
@@ -47,16 +56,16 @@ extern "C" void SysTick_Handler(void)
 }
 
 
-void Delay(unsigned long tick)
+void Delay(U64 tick)
 {
-  unsigned long systickcnt;
+  U64 systickcnt;
 
   systickcnt = SysTickCnt;
 	// TODO: handle when SysTickCnt overflows
   while ((SysTickCnt - systickcnt) < tick);
 }
 
-volatile uint32_t* pMotorPWMArray[2];
+volatile uint32_t* g_pMotorPWMArray[2];
 
 void SetupPWM()
 {
@@ -79,14 +88,37 @@ void SetupPWM()
 	// enable counter
 	TMR16B0_TCR_CEn(TCR_ENABLE);	
 	
-	pMotorPWMArray[0] = &LPC_TMR16B0->MR0;
-	pMotorPWMArray[1] = &LPC_TMR16B0->MR1;
+	g_pMotorPWMArray[0] = &LPC_TMR16B0->MR0;
+	g_pMotorPWMArray[1] = &LPC_TMR16B0->MR1;
 }
 
 
-inline void SetMotorSpeed(int index, uint32_t speed)
+inline void MotorPower(int index, uint32_t speed)
 {
-	*(pMotorPWMArray[index]) = speed;  // as a percentage
+	*(g_pMotorPWMArray[index]) = 100 - speed;  // as a percentage
+}
+
+void MotorDir(int index, int dir)
+{
+	int a, b;
+	if (dir == -1)	// backwards
+	{
+		a = 0;
+		b = 1;
+	}
+	else if (dir == 0)	// braking
+	{
+		a = 1;
+		b = 1;
+	}
+	else	// (dir == 1)  forwards
+	{
+		a = 1;
+		b = 0;
+	}
+	
+	GPIO1_DATA(4, a); // turn on 1A on H-Bridge (this controls motor direction)
+	GPIO1_DATA(5, b); // turn on 2A on H-Bridge (this controls motor direction)
 }
 
 inline int min(int a, int b)
@@ -103,58 +135,41 @@ inline int max(int a, int b)
 	else 
 		return b;
 }
+inline int abs(int a)
+{
+	return (a < 0) ? -a : a;
+}
 
-volatile int32_t g_motorPos;
-volatile unsigned long g_motorTime;
-
-volatile int g_transitionTime;	// time stamp of recent interrupt
-volatile bool g_inTransition;	// edge transition occured, waiting for elasped time
-
-volatile int32_t g_motorInc;
-
-// interrupt should only be valid if the previous interrupt occurred 
-// a number of system ticks ago.
-
-// TODO:  not sure if the logic is correct.  if the transition was noisy
-//	then the condition below is not satisfied until the next noisy transition.
-
-// it's almost like when we have a transition, we need to schedule a timer interrupt
-//  that occurs in q number of cycles.  if another edge comes in before the timer
-//  then the timer is cleared.  we are looking for both a transition and a delay.
-//  it would be simplest to do this without schduling a timer... just use history.
+volatile int g_motorPos;
+volatile int g_motorStop;
+volatile U64 g_motorTime;
+volatile int g_motorInc;
 
 extern "C" void PIOINT1_IRQHandler(void)
 {
-	unsigned long systickcnt = SysTickCnt;
+	U64 systickcnt = SysTickCnt;
 
 	if (GPIO1_MIS(0))
 	{
-		if (g_inTransition)
+		g_motorPos += g_motorInc;
+		g_motorTime = systickcnt;
+		if (g_motorPos == g_motorStop)
 		{
-			unsigned long elaspedTime = g_transitionTime - systickcnt;
-			if (elaspedTime > 2 /*ms*/)
-			{
-				g_motorPos += g_motorInc;
-				g_motorTime = systickcnt;
-				// we are still in transition, we just need to reset the transition timer
-				g_transitionTime = systickcnt;
-			}
-			else
-			{
-				g_inTransition = false;
-			}
+			MotorDir(0, 0);	// brake motor
+			MotorPower(0, 100);	// stop the motor
 		}
-		else
-		{
-			g_inTransition = true;
-			g_transitionTime = systickcnt;
-		}
-		
-		GPIO1_IC(0);
+		GPIO1_IC(0);	// clear the interrupt flag
+		__NOP();__NOP();	// required after clearing interrupt flags
 	}
-	
-	__NOP();__NOP();
+}
 
+void FlashLED()
+{
+	for (int i = 0; i < 10; ++i)
+	{
+		Delay(1000);
+		GPIO0_DATA(7, i & 0x1);  // turn on diagnostic led
+	}
 }
 
 int main(void)
@@ -165,20 +180,41 @@ int main(void)
 	// Enable clock to IO Configuration block.  Needed for UART, SPI, I2C, etc...
 	SYSCON_SYSAHBCLKCTRL_IOCON(SYSAHBCLKCTRL_ENABLE);
 	
-  SysTick_Config(SystemFrequency/1000 - 1); // Generate interrupt each 1 ms
+  SysTick_Config(SystemFrequency/10000 - 1); // Generate interrupt each .1 ms
 	
 	// set direction on port 0_7 (pin 28) to output
 	GPIO0_DIR(7, GPIO_OUTPUT);	
 	GPIO0_DATA(7, 1);  // turn on diagnostic led
 
+	GPIO1_DIR(4, GPIO_OUTPUT);	// configure port 1_5 (pin 14) for output
 	GPIO1_DIR(5, GPIO_OUTPUT);	// configure port 1_5 (pin 14) for output
-	GPIO1_DATA(5, 1); // turn on 1A on H-Bridge (this controls motor direction)
 
 	// PWM output (pin 1) is tied to 1,2EN on H-bridge (SN754410 Quad Half H-bridge)	// 
 	SetupPWM();
 
+	MotorDir(0, 0);	// turn on braking at 100%
+	MotorPower(0, 100);
+
+	// motor details:
+	// 120:1 gearbox
+	// 8 teeth on motor gear
+	// 32 teeth on gear with optical wheel
+	// 4 edges per rot of optical wheel
+	// 8/32*120*4 = 106.666 edges per rev
+	// At 5.5V max speed with just 2 gears,
+	// pulse width is avg 9.5 ms.
+	//
+	// a full stop should be no edge for about 150ms
+	// and motor on brake.
+	//
+	
+	g_motorPos = 0;
+	g_motorStop = 0;
+	g_motorTime = 0;
+	g_motorInc = 0;
+	
 	// setup interrupts on PIO1_0
-	IOCON_PIO1_0_MODE(PIO1_0_MODE_NO_RESISTOR);
+	IOCON_PIO1_0_MODE(PIO1_0_MODE_PULLDOWN_RESISTOR);
 	GPIO1_DIR(0, GPIO_INPUT);	
 	GPIO1_IS(0, GPIO_EDGE_SENSITIVE);
 	GPIO1_IBE(0, GPIO_BOTH_EDGES);
@@ -186,14 +222,97 @@ int main(void)
 
   NVIC_EnableIRQ(EINT1_IRQn);
 
-	volatile int val = 0;
-	volatile int val2 = 0;
-	
+	U64 time1, time2, oldTime;
+	int pos, oldPos;
+	oldTime = 0xFFFFFFFFFFFFFFFF;
+	U64 systickcnt;
+	int desiredMotorInc;		// g_motorInc can only be changed when in a stopped state
+
 	while (1)
 	{
-		val = GPIO1_DATA(0);
-		val2 = g_motorPos[0];
-		Delay(1000);
+		FlashLED();
+		desiredMotorInc = g_motorInc = 1;
+		g_motorStop = 100;
+		MotorDir(0, 1);
+		MotorPower(0, 100);
+
+		while (1)
+		{
+			do {
+				time1 = g_motorTime;
+				pos = g_motorPos;
+				time2 = g_motorTime;
+			} while (time1 != time2);
+
+			if (pos > g_motorStop)
+			{
+				desiredMotorInc = -1;
+			}
+			else if (pos < g_motorStop)
+			{
+				desiredMotorInc = 1;
+			}
+
+			systickcnt = SysTickCnt;
+			if ((systickcnt - time2) > 200 /*ms*/)
+			{
+				// stopped
+				if (pos ==  g_motorStop)
+				{
+					break;	//achieved goal pos and we are stopped
+				}
+				
+				if (desiredMotorInc != g_motorInc)
+				{
+					g_motorInc = desiredMotorInc;		// g_motorInc must always be 1 or -1, otherwise we lose track of position
+					// change direction and turn power back on
+					MotorDir(0, desiredMotorInc);
+					MotorPower(0, 20);
+				}
+			}
+		}
+
+		FlashLED();
+		desiredMotorInc = g_motorInc = -1;
+		g_motorStop = 0;
+		MotorDir(0, -1);
+		MotorPower(0, 100);
+
+		while (1)
+		{
+			do {
+				time1 = g_motorTime;
+				pos = g_motorPos;
+				time2 = g_motorTime;
+			} while (time1 != time2);
+
+			if (pos > g_motorStop)
+			{
+				desiredMotorInc = -1;
+			}
+			else if (pos < g_motorStop)
+			{
+				desiredMotorInc = 1;
+			}
+
+			systickcnt = SysTickCnt;
+			if ((systickcnt - time2) > 200 /*ms*/)
+			{
+				// stopped
+				if (pos ==  g_motorStop)
+				{
+					break;	//achieved goal pos and we are stopped
+				}
+				
+				if (desiredMotorInc != g_motorInc)
+				{
+					g_motorInc = desiredMotorInc;		// g_motorInc must always be 1 or -1, otherwise we lose track of position
+					// change direction and turn power back on
+					MotorDir(0, desiredMotorInc);
+					MotorPower(0, 20);
+				}
+			}
+		}
+
 	}
-	
 }

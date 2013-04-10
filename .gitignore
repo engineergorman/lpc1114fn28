@@ -179,3 +179,4 @@ pip-log.txt
 *.lnp
 *.map
 *.tra
+*.__i
