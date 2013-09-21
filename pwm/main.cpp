@@ -23,6 +23,8 @@
 
 #include <LPC11xx.h>
 #include "../core/core.h"
+#include "float.h"
+#include "math.h"
 
 uint32_t SystemFrequency;
 
@@ -96,7 +98,11 @@ int main(void)
 
 	// PWM output (pin 1) is tied to 1,2EN on H-bridge (SN754410 Quad Half H-bridge)	// 
 	SetupPWM();
-
+#if 0
+	float ft = 1.5f;
+	ft = ft * 2.5f;
+	ft = sinf(ft);
+	#endif
 	// PWM test
 	int fade = 25;
 	int hold = 1000;

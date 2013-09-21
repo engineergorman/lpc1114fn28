@@ -1,3 +1,4 @@
+#define NO_EXTERN_SYSTEM_FREQUENCY
 #include "core.h"
 // The engineergorman\lpc1114fn28 framework is licensed under the MIT license:
 // 
@@ -21,6 +22,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+uint32_t SystemFrequency;
 
 // configure the PLL to use a multiple of the IRC oscillator 
 // crystal = speed of the IRC (normally 12MHz or 12000000ul)
