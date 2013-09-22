@@ -1,4 +1,3 @@
-#include "core.h"
 // The engineergorman\lpc1114fn28 framework is licensed under the MIT license:
 // 
 // Copyright (C) 2013 by Chris Gorman
@@ -21,9 +20,21 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-// TODO: add license from rt library
 
-// TODO: evaluate the need to implement the rt_hw_interrupt_enable() and disable.
+#include <LPC11xx.h>
+#include "../core/core.h"
+
+uint32_t SystemFrequency;
+
+extern "C" void SystemInit(void)
+{
+	// if you initialize clock here beware that the C++ runtime 
+	// initialization code runs next...  and writes to globals
+	// do not persist.  so the SystemFrequency needs to be set
+	// in the main() function, or just initialize the clock there
+	// for simplicity.
+}
+
 
 #define IER_RBR         0x01
 #define IER_THRE        0x02
@@ -45,6 +56,8 @@
 #define LSR_RXFE        0x80
 
 
+#define UART_BAUDRATE   115200
+//#define UART_BAUDRATE   9600
 
 typedef unsigned char rt_uint8_t;
 typedef unsigned int rt_ubase_t;
@@ -52,7 +65,7 @@ typedef int rt_base_t;
 typedef int rt_size_t;
 typedef unsigned int rt_uint32_t;
 
-#define RT_UART_RX_BUFFER_SIZE	64
+#define RT_UART_RX_BUFFER_SIZE	50
 
 struct rt_uart_lpc
 {
@@ -61,20 +74,14 @@ struct rt_uart_lpc
 	rt_uint8_t rx_buffer[RT_UART_RX_BUFFER_SIZE];
 } uart_device;
 
-// Software uses the CPSIE i and CPSID i instructions to enable and disable interrupts. 
-// The CMSIS provides the following intrinsic functions for these instructions:
-// void __disable_irq(void) 	// Disable Interrupts
-// void __enable_irq(void) 	// Enable Interrupts
-
-inline rt_ubase_t rt_hw_interrupt_disable()
+// TODO:  maybe we need to implement this?
+rt_ubase_t rt_hw_interrupt_disable()
 {
-	__disable_irq();
 	return 0;
 }
 
-inline void rt_hw_interrupt_enable(rt_ubase_t x)
+void rt_hw_interrupt_enable(rt_ubase_t x)
 {
-	__enable_irq();
 }
 
 extern "C" void UART_IRQHandler(void)
@@ -101,14 +108,10 @@ extern "C" void UART_IRQHandler(void)
 	}
 }
 
-void uart_init (unsigned int baudrate)
+void rt_uart_init ()
 {
-	/* device initialization */
-	//memset(uart_device.rx_buffer, 0, sizeof(uart_device.rx_buffer));
-	uart_device.read_index = uart_device.save_index = 0;
-
 	rt_uint32_t Fdiv;
-	volatile rt_uint32_t regVal;	// volatile keyword gets rid of warning
+	rt_uint32_t regVal;
 
 	/* Init UART Hardware */
 	LPC_IOCON->PIO1_6 &= ~0x07;    /*  UART I/O config */
@@ -129,7 +132,7 @@ void uart_init (unsigned int baudrate)
 	unsigned int  ahbClockDiv = LPC_SYSCON->SYSAHBCLKDIV;
 	unsigned int  uartClockDiv = LPC_SYSCON->UARTCLKDIV;
 	unsigned int pllclock = (SystemFrequency/ahbClockDiv)/uartClockDiv;
-	Fdiv = pllclock / (16 * baudrate);
+	Fdiv = pllclock / (16 * UART_BAUDRATE);
 
 	LPC_UART->DLM = Fdiv / 256;
 	LPC_UART->DLL = Fdiv % 256;
@@ -149,19 +152,19 @@ void uart_init (unsigned int baudrate)
 	LPC_UART->IER = IER_RBR | IER_THRE | IER_RLS;   /* Enable UART interrupt */
 }
 
-void uart_open()
+void rt_uart_open()
 {
 	/* Enable the UART Interrupt */
 	NVIC_EnableIRQ(UART_IRQn);
 }
 
-void uart_close()
+void rt_uart_close()
 {
 	/* Disable the UART Interrupt */
 	NVIC_DisableIRQ(UART_IRQn);
 }
 
-int uart_read(void* buffer, int size)
+static rt_size_t rt_uart_read(void* buffer, rt_size_t size)
 {
 	rt_uint8_t* ptr;
 	struct rt_uart_lpc *uart = &uart_device;
@@ -202,7 +205,7 @@ int uart_read(void* buffer, int size)
 	return (rt_uint32_t)ptr - (rt_uint32_t)buffer;
 }
 
-void uart_write(const void* buffer, int size)
+static rt_size_t rt_uart_write(const void* buffer, rt_size_t size)
 {
 	char *ptr;
 	ptr = (char*)buffer;
@@ -218,21 +221,45 @@ void uart_write(const void* buffer, int size)
 		ptr++;
 		size--;
 	}
+
+	return (rt_size_t) ptr - (rt_size_t) buffer;
 }
 
-void uart_write_str(const void* buffer)
+void rt_hw_uart_init(void)
 {
-	char *ptr;
-	ptr = (char*)buffer;
+	struct rt_uart_lpc* uart;
 
-	while ( *ptr )
+	/* get uart device */
+	uart = &uart_device;
+
+	/* device initialization */
+	//memset(uart->rx_buffer, 0, sizeof(uart->rx_buffer));
+	uart->read_index = uart->save_index = 0;
+}
+
+
+int main(void)
+{
+	unsigned int SystemCoreClock = 48000000UL;
+	
+	// Set system frequency to 48MHz
+	SystemFrequency = ConfigurePLL(12000000UL, SystemCoreClock);
+		
+	// Enable clock to IO Configuration block.  Needed for UART, SPI, I2C, etc...
+	SYSCON_SYSAHBCLKCTRL_IOCON(SYSAHBCLKCTRL_ENABLE);
+
+	rt_hw_uart_init();
+	rt_uart_init();
+	rt_uart_open();
+	
+	char buffer[256];
+	char str[] = "hi.\r\n";
+	rt_uart_write(str, 5);
+	
+	while (1)
 	{
-		/* THRE status, contain valid data */
-		while ( !(LPC_UART->LSR & LSR_THRE) );
-
-		/* write data */
-		LPC_UART->THR = *ptr;
-
-		ptr++;
+		// echo back what was read
+		int sz = rt_uart_read(buffer, 256);
+		rt_uart_write(buffer, sz);
 	}
 }

@@ -37,7 +37,81 @@ extern "C" void SystemInit(void)
 }
 
 #define PWM_FREQ		(16*1000)		// 16 KHz
-#define PWM_DUTY_CYCLE	(1000)	// 1000 levels
+#define PWM_DUTY_CYCLE	(3000)	// 3000 levels
+
+
+struct HallSensorTime
+{
+	uint32_t cycle_count;
+	uint32_t subcycle_count;
+};
+
+struct HallTimers
+{
+	uint64_t cycles;
+
+	uint64_t curr;
+	uint64_t prev;
+};
+
+HallTimers g_hallTimers;
+
+extern "C" void TIMER16_0_IRQHandler(void)
+{
+	__disable_irq();
+	if (TMR16B0->IR.CR0)
+	{
+		uint32_t timerCount = TMR16B0->TC;
+		uint32_t cycleResetPending = TMR16B0->IR.MR3;
+		uint64_t major = g_hallTimers.cycles;
+		uint32_t minor = TMR16B0->CR0;
+		if (timerCount < minor && !cycleResetPending)
+		{
+			// timer counter has wrapped around.  we need to back up
+			// time unless the cycle reset interrupt is still pending.
+			major -= PWM_DUTY_CYCLE;
+		}
+		major += minor;
+		g_hallTimers.prev = g_hallTimers.curr;
+		g_hallTimers.curr = g_hallTimers.cycles + major;
+		
+		TMR16B0->IR.CR0 = 1;	// clear the interrupt
+	}
+
+	if (TMR16B0->IR.MR3)
+	{
+		g_hallTimers.cycles += PWM_DUTY_CYCLE;
+		TMR16B0->IR.MR3 = 1;	// clear the interrupt
+	}
+	__NOP();__NOP();
+	__enable_irq();
+}
+
+extern "C" void TIMER16_1_IRQHandler(void)
+{
+	__disable_irq();
+	if (TMR16B1->IR.CR0)
+	{
+		uint32_t timerCount = TMR16B0->TC;	// not a typo, we want timer 16_0
+		uint32_t cycleResetPending = TMR16B0->IR.MR3;	// not a typo, we want timer 16_0
+		uint64_t major = g_hallTimers.cycles;
+		uint32_t minor = TMR16B1->CR0;
+		if (timerCount < minor && !cycleResetPending)
+		{
+			// timer counter has wrapped around.  we need to back up
+			// time unless the cycle reset interrupt is still pending.
+			major -= PWM_DUTY_CYCLE;
+		}
+		major += minor;
+		g_hallTimers.prev = g_hallTimers.curr;
+		g_hallTimers.curr = g_hallTimers.cycles + major;
+		
+		TMR16B1->IR.CR0 = 1;	// clear the interrupt
+	}
+
+	__NOP();__NOP();
+	__enable_irq();
+}
 
 void SetupPWM16B0()
 {
@@ -62,40 +136,83 @@ void SetupPWM16B0()
 	IOCON_PIO0_2_FUNC(PIO0_2_FUNC_TIMER);
 
 	// set timer prescaler
-	TMR16B0_PR_Set(SystemFrequency/(PWM_FREQ * PWM_DUTY_CYCLE));
+	TMR16B0->PR = 0;	// TC incremented on every PCLK
 	// set match register 3 to reset TC
-	TMR16B0_MCR_MR3R(MCR_ENABLE);
+	TMR16B0->MCR.MR3R = MCR_ENABLE;
+	// set match register 3 to generate interrupt
+	TMR16B0->MCR.MR3I = MCR_ENABLE;
 	// set PWM duty cycle
-	TMR16B0_MR3_Set(PWM_DUTY_CYCLE);
+	TMR16B0->MR3 = PWM_DUTY_CYCLE - 1;	// TC will take on values from 0.. DUTY_CYCLE-1
 	// set pulse width
-	TMR16B0_MR0_Set(PWM_DUTY_CYCLE);
+	TMR16B0->MR0 = PWM_DUTY_CYCLE;	// this essentially turns off the pin
 	// enable PWM mode on match registers 0,1 (MR0, MR1)
-	TMR16B0_PWMC_PWMEN0(PWMC_ENABLE);
-	TMR16B0_PWMC_PWMEN1(PWMC_ENABLE);
-	// enable counter
-	TMR16B0_TCR_CEn(TCR_ENABLE);	
+	TMR16B0->PWMC.PWMEN0 = PWMC_ENABLE;
+	TMR16B0->PWMC.PWMEN1 = PWMC_ENABLE;
+
+	// setup capture control register
+	TMR16B0->CCR.RISING_EDGE = CCR_ENABLE;
+	TMR16B0->CCR.FALLING_EDGE = CCR_ENABLE;
+	TMR16B0->CCR.INTERRUPT = CCR_ENABLE;
+	
+	// Enable interrupt
+	NVIC_EnableIRQ(TIMER_16_0_IRQn);
 }
 
 void SetupPWM16B1()
 {
+	// MAT0 - CL  (PIO_1_9, pin 18)
+	// MAT1 - 
+	// MAT2 -
+	// MAT3 - 
+	// CAP0 - Hall1 (PIO_1_8, pin 17)
+
 	// Enables clock for 16-bit counter/timer 0
 	SYSCON_SYSAHBCLKCTRL_CT16B1(SYSAHBCLKCTRL_ENABLE);
-	// setup pin 1 for PWM output
-	//IOCON_PIO0_8_FUNC(PIO0_8_FUNC_TIMER);
-	// disable pullup resistor pin 1
-	//IOCON_PIO0_8_MODE(PIO0_8_MODE_NO_RESISTOR);
+
+	// setup pin 18 for PWM output
+	IOCON_PIO1_9_FUNC(PIO1_9_FUNC_TIMER);
+
+	// disable pullup resistor pin 18
+	IOCON_PIO1_9_MODE(PIO1_9_MODE_NO_RESISTOR);
+
+	// setup pin 17 for timer capture input
+	IOCON_PIO1_8_FUNC(PIO1_8_FUNC_TIMER);
+
 	// set timer prescaler
-	TMR16B1_PR_Set(SystemFrequency/2500000);	// TC = 2.5Mhz
+	TMR16B1->PR = 0;
 	// set match register 3 to reset TC
-	TMR16B1_MCR_MR3R(MCR_ENABLE);
+	TMR16B1->MCR.MR3R = MCR_ENABLE;
 	// set PWM duty cycle
-	TMR16B1_MR3_Set(100);	// 25KHz (PWM freq for SanAce B97 server fan)
+	TMR16B1->MR3 = PWM_DUTY_CYCLE;
 	// set pulse width
-	TMR16B1_MR0_Set(0);	// 0%
+	TMR16B1->MR0 = PWM_DUTY_CYCLE;
 	// enable PWM mode on match register 0 (MR0)
-	TMR16B1_PWMC_PWMEN0(PWMC_ENABLE);
-	// enable counter
-	TMR16B1_TCR_CEn(TCR_ENABLE);	
+	TMR16B1->PWMC.PWMEN0 = PWMC_ENABLE;
+	// setup capture control register
+	TMR16B1->CCR.RISING_EDGE = CCR_ENABLE;
+	TMR16B1->CCR.FALLING_EDGE = CCR_ENABLE;
+	TMR16B1->CCR.INTERRUPT = CCR_ENABLE;
+
+	// Enable interrupt
+	NVIC_EnableIRQ(TIMER_16_1_IRQn);
+}
+
+void EnableTimers()
+{
+	// from looking at the assembly to enable the counters, 
+	//	it takes 4 cycles to enable each clock
+	TMR16B0->TC = 0;
+	TMR16B1->TC = 4;
+	TMR32B0->TC = 8;
+	TMR32B1->TC = 12;
+	
+	// NOTE: don't use bitfields for this because timing is critical
+	LPC_TMR16B0->TCR = 1;
+	LPC_TMR16B1->TCR = 1;
+	LPC_TMR32B0->TCR = 1;
+	LPC_TMR32B1->TCR = 1;
+
+	// all four clocks should be in sync at this point
 }
 
 inline bool isDigit(char c)
@@ -128,6 +245,8 @@ int main(void)
 	// Enable clock to IO Configuration block.  Needed for UART, SPI, I2C, etc...
 	SYSCON_SYSAHBCLKCTRL_IOCON(SYSAHBCLKCTRL_ENABLE);
 
+	EnableTimers();
+	
 	// ports 0_4 (pin 27) and 0_5 (pin 5) default to Input with Open Drain.
 	// pins have an external pulldown resistor and connect to the B inputs of the
 	// NAND gates.  this turns off all IGBT modules by default.
@@ -145,9 +264,17 @@ int main(void)
 	uart_open();
 	uart_write_str("CNC spindle control.\r\n");
 
-	//SetupPWM();
-
-	// set pulse width
-	//TMR16B0_MR0_Set(0);
+	SetupPWM16B0();
+	SetupPWM16B1();
+	EnableTimers();
 	
+	for (int i = 0; i < 100; ++i)
+		__NOP();
+		
+	uint32_t a = TMR16B0->TC;
+	uint32_t b = TMR16B1->TC;
+	uint32_t c = TMR32B0->TC;
+	uint32_t d = TMR32B1->TC;		
+
+	__NOP();
 }

@@ -485,8 +485,7 @@ inline uint32_t GPIO1_DATA( uint32_t pin )
   return LPC_GPIO1->MASKED_ACCESS[(1 << pin)];
 }
 
-#include "timers16bit.h"
-#include "timers32bit.h"
+#include "timers.h"
 
 /////////////////////////////////////////////////
 //	LPC_IOCON Section
@@ -712,6 +711,64 @@ inline void IOCON_PIO1_1_MODE(uint32_t val)
 inline void IOCON_PIO1_1_ADMODE(uint32_t val)
 {
 	((_PIO1_1*)&LPC_IOCON->R_PIO1_1)->ADMODE = val;
+}
+
+
+// LPC_IOCON->PIO1_8
+// I/O configuration for pin (17) PIO1_8/CT16B1_CAP0 (R/W)
+struct _PIO1_8
+{
+	uint32_t FUNC : 3;	// pin function
+	uint32_t MODE : 2;	// pull up/down resistor mode
+	uint32_t HYS : 1;		// Hysteresis.
+	uint32_t reserved0 : 4;
+	uint32_t OD : 1;		// Selects pseudo open-drain mode
+	uint32_t reserved1 : 21;
+};
+
+#define PIO1_8_FUNC_GPIO 0x0
+#define PIO1_8_FUNC_TIMER 0x1
+inline void IOCON_PIO1_8_FUNC(uint32_t val)
+{
+	((_PIO1_8*)&LPC_IOCON->PIO1_8)->FUNC = val;
+}
+
+#define PIO1_8_MODE_NO_RESISTOR 0x0
+#define PIO1_8_MODE_PULLDOWN_RESISTOR 0x1
+#define PIO1_8_MODE_PULLUP_RESISTOR 0x2
+#define PIO1_8_MODE_REPEATER 0x3
+inline void IOCON_PIO1_8_MODE(uint32_t val)
+{
+	((_PIO1_8*)&LPC_IOCON->PIO1_8)->MODE = val;
+}
+
+
+// LPC_IOCON->PIO1_9
+// I/O configuration for pin (18) PIO1_9/CT16B1_MAT0 (R/W)
+struct _PIO1_9
+{
+	uint32_t FUNC : 3;	// pin function
+	uint32_t MODE : 2;	// pull up/down resistor mode
+	uint32_t HYS : 1;		// Hysteresis.
+	uint32_t reserved0 : 4;
+	uint32_t OD : 1;		// Selects pseudo open-drain mode
+	uint32_t reserved1 : 21;
+};
+
+#define PIO1_9_FUNC_GPIO 0x0
+#define PIO1_9_FUNC_TIMER 0x1
+inline void IOCON_PIO1_9_FUNC(uint32_t val)
+{
+	((_PIO1_9*)&LPC_IOCON->PIO1_9)->FUNC = val;
+}
+
+#define PIO1_9_MODE_NO_RESISTOR 0x0
+#define PIO1_9_MODE_PULLDOWN_RESISTOR 0x1
+#define PIO1_9_MODE_PULLUP_RESISTOR 0x2
+#define PIO1_9_MODE_REPEATER 0x3
+inline void IOCON_PIO1_9_MODE(uint32_t val)
+{
+	((_PIO1_9*)&LPC_IOCON->PIO1_9)->MODE = val;
 }
 
 
