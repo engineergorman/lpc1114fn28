@@ -37,7 +37,8 @@ extern "C" void SystemInit(void)
 }
 
 #define PWM_FREQ		(16*1000)		// 16 KHz
-#define PWM_DUTY_CYCLE	(3000)	// 3000 levels
+//#define PWM_DUTY_CYCLE	(3000)	// 3000 levels
+#define PWM_DUTY_CYCLE	(64000)	// 3000 levels
 
 
 struct HallSensorTime
@@ -56,26 +57,40 @@ struct HallTimers
 
 HallTimers g_hallTimers;
 
+int32_t diff;		// DEBUG DEBUG
+
 extern "C" void TIMER16_0_IRQHandler(void)
 {
 	__disable_irq();
 	if (TMR16B0->IR.CR0)
 	{
+		// disable capture
+		TMR16B0->CCR.RISING_EDGE = CCR_DISABLE;
+		TMR16B0->CCR.FALLING_EDGE = CCR_DISABLE;
+// 		TMR16B0->CCR.INTERRUPT = CCR_DISABLE;
 		uint32_t timerCount = TMR16B0->TC;
+		uint32_t minor = TMR16B0->CR0;
 		uint32_t cycleResetPending = TMR16B0->IR.MR3;
 		uint64_t major = g_hallTimers.cycles;
-		uint32_t minor = TMR16B0->CR0;
 		if (timerCount < minor && !cycleResetPending)
 		{
 			// timer counter has wrapped around.  we need to back up
 			// time unless the cycle reset interrupt is still pending.
 			major -= PWM_DUTY_CYCLE;
 		}
+		// DEBUG DEBUG
+		diff = (int)timerCount - (int)minor;
+		
 		major += minor;
 		g_hallTimers.prev = g_hallTimers.curr;
 		g_hallTimers.curr = g_hallTimers.cycles + major;
 		
 		TMR16B0->IR.CR0 = 1;	// clear the interrupt
+
+		TMR16B0->CCR.RISING_EDGE = CCR_ENABLE;
+		TMR16B0->CCR.FALLING_EDGE = CCR_ENABLE;
+// 		TMR16B0->CCR.INTERRUPT = CCR_ENABLE;
+
 	}
 
 	if (TMR16B0->IR.MR3)
@@ -121,19 +136,20 @@ void SetupPWM16B0()
 	// MAT3 - 
 	// CAP0 - Hall0 (PIO_0_2, pin 25)
 	
-	// Enables clock for 16-bit counter/timer 0
+	// Enables clock for counter/timer
 	SYSCON_SYSAHBCLKCTRL_CT16B0(SYSAHBCLKCTRL_ENABLE);
 
 	// setup pins 1,2 for PWM output
-	IOCON_PIO0_8_FUNC(PIO0_8_FUNC_TIMER);
-	IOCON_PIO0_9_FUNC(PIO0_9_FUNC_TIMER);
+	IOCON->PIO0_8.FUNC = PIO0_8_FUNC_TIMER;
+	IOCON->PIO0_9.FUNC = PIO0_9_FUNC_TIMER;
 
 	// disable pullup resistor pins 1,2
-	IOCON_PIO0_8_MODE(PIO0_8_MODE_NO_RESISTOR);
-	IOCON_PIO0_9_MODE(PIO0_9_MODE_NO_RESISTOR);
+	IOCON->PIO0_8.MODE = MODE_NO_RESISTOR;
+	IOCON->PIO0_9.MODE = MODE_NO_RESISTOR;
 
 	// setup pin 25 for timer capture input
-	IOCON_PIO0_2_FUNC(PIO0_2_FUNC_TIMER);
+	IOCON->PIO0_2.FUNC = PIO0_2_FUNC_TIMER;
+	IOCON->PIO0_2.HYS = HYS_ENABLE;
 
 	// set timer prescaler
 	TMR16B0->PR = 0;	// TC incremented on every PCLK
@@ -145,6 +161,7 @@ void SetupPWM16B0()
 	TMR16B0->MR3 = PWM_DUTY_CYCLE - 1;	// TC will take on values from 0.. DUTY_CYCLE-1
 	// set pulse width
 	TMR16B0->MR0 = PWM_DUTY_CYCLE;	// this essentially turns off the pin
+	TMR16B0->MR1 = PWM_DUTY_CYCLE;	// this essentially turns off the pin
 	// enable PWM mode on match registers 0,1 (MR0, MR1)
 	TMR16B0->PWMC.PWMEN0 = PWMC_ENABLE;
 	TMR16B0->PWMC.PWMEN1 = PWMC_ENABLE;
@@ -166,17 +183,17 @@ void SetupPWM16B1()
 	// MAT3 - 
 	// CAP0 - Hall1 (PIO_1_8, pin 17)
 
-	// Enables clock for 16-bit counter/timer 0
+	// Enables clock for counter/timer
 	SYSCON_SYSAHBCLKCTRL_CT16B1(SYSAHBCLKCTRL_ENABLE);
 
 	// setup pin 18 for PWM output
-	IOCON_PIO1_9_FUNC(PIO1_9_FUNC_TIMER);
+	IOCON->PIO1_9.FUNC = PIO1_9_FUNC_TIMER;
 
 	// disable pullup resistor pin 18
-	IOCON_PIO1_9_MODE(PIO1_9_MODE_NO_RESISTOR);
+	IOCON->PIO1_9.MODE = MODE_NO_RESISTOR;
 
 	// setup pin 17 for timer capture input
-	IOCON_PIO1_8_FUNC(PIO1_8_FUNC_TIMER);
+	IOCON->PIO1_8.FUNC = PIO1_8_FUNC_TIMER;
 
 	// set timer prescaler
 	TMR16B1->PR = 0;
@@ -195,6 +212,80 @@ void SetupPWM16B1()
 
 	// Enable interrupt
 	NVIC_EnableIRQ(TIMER_16_1_IRQn);
+}
+
+void SetupPWM32B0()
+{
+	// MAT0 - 
+	// MAT1 - 
+	// MAT2 -
+	// MAT3 - 
+	// CAP0 - SpeedIn (PIO_1_5, pin 14)
+
+	// Enables clock for counter/timer
+	SYSCON_SYSAHBCLKCTRL_CT32B0(SYSAHBCLKCTRL_ENABLE);
+
+	// setup pin 17 for timer capture input
+	IOCON->PIO1_5.FUNC = PIO1_5_FUNC_TIMER;
+
+	// set timer prescaler
+	TMR32B0->PR = 0;
+
+	// setup capture control register
+	TMR32B0->CCR.RISING_EDGE = CCR_ENABLE;
+	TMR32B0->CCR.FALLING_EDGE = CCR_ENABLE;
+	TMR32B0->CCR.INTERRUPT = CCR_ENABLE;
+
+	// Enable interrupt
+	NVIC_EnableIRQ(TIMER_32_0_IRQn);
+}
+
+void SetupPWM32B1()
+{
+	// MAT0 - AH  (PIO_1_1, pin 10)
+	// MAT1 - BH  (PIO_1_2, pin 11)
+	// MAT2 -
+	// MAT3 - CH  (PIO_1_4, pin 13)
+	// CAP0 - Hall2 (PIO_1_0, pin 9)
+	
+	// Enables clock for counter/timer
+	SYSCON_SYSAHBCLKCTRL_CT32B1(SYSAHBCLKCTRL_ENABLE);
+
+	// setup pins 1,2 for PWM output
+	IOCON->PIO1_1.FUNC = PIO1_1_FUNC_TIMER;
+	IOCON->PIO1_2.FUNC = PIO1_2_FUNC_TIMER;
+	IOCON->PIO1_4.FUNC = PIO1_4_FUNC_TIMER;
+
+	// disable pullup resistor pins 1,2
+	IOCON->PIO1_1.MODE = MODE_NO_RESISTOR;
+	IOCON->PIO1_2.MODE = MODE_NO_RESISTOR;
+	IOCON->PIO1_4.MODE = MODE_NO_RESISTOR;
+
+	// setup pin 25 for timer capture input
+	IOCON->PIO1_0.FUNC = PIO1_0_FUNC_TIMER;
+
+	// set timer prescaler
+	TMR32B1->PR = 0;	// TC incremented on every PCLK
+	// set match register 2 to reset TC
+	TMR32B1->MCR.MR2R = MCR_ENABLE;
+	// set PWM duty cycle
+	TMR32B1->MR2 = PWM_DUTY_CYCLE - 1;	// TC will take on values from 0.. DUTY_CYCLE-1
+	// set pulse width
+	TMR32B1->MR0 = PWM_DUTY_CYCLE;	// this essentially turns off the pin
+	TMR32B1->MR1 = PWM_DUTY_CYCLE;	// this essentially turns off the pin
+	TMR32B1->MR3 = PWM_DUTY_CYCLE;	// this essentially turns off the pin
+	// enable PWM mode on match registers 0,1,3 (MR0, MR1, MR3)
+	TMR32B1->PWMC.PWMEN0 = PWMC_ENABLE;
+	TMR32B1->PWMC.PWMEN1 = PWMC_ENABLE;
+	TMR32B1->PWMC.PWMEN3 = PWMC_ENABLE;
+
+	// setup capture control register
+	TMR32B1->CCR.RISING_EDGE = CCR_ENABLE;
+	TMR32B1->CCR.FALLING_EDGE = CCR_ENABLE;
+	TMR32B1->CCR.INTERRUPT = CCR_ENABLE;
+	
+	// Enable interrupt
+	NVIC_EnableIRQ(TIMER_32_1_IRQn);
 }
 
 void EnableTimers()
@@ -244,19 +335,17 @@ int main(void)
 		
 	// Enable clock to IO Configuration block.  Needed for UART, SPI, I2C, etc...
 	SYSCON_SYSAHBCLKCTRL_IOCON(SYSAHBCLKCTRL_ENABLE);
-
-	EnableTimers();
 	
 	// ports 0_4 (pin 27) and 0_5 (pin 5) default to Input with Open Drain.
 	// pins have an external pulldown resistor and connect to the B inputs of the
 	// NAND gates.  this turns off all IGBT modules by default.
-	IOCON_PIO0_4_FUNC(PIO0_4_FUNC_GPIO);
-	IOCON_PIO0_4_I2CMODE(PIO0_4_I2CMODE_GPIO);
+	IOCON->PIO0_4.FUNC = PIO0_4_FUNC_GPIO;
+	IOCON->PIO0_4.I2CMODE = I2CMODE_GPIO;
 	GPIO0_DATA(4, 0);
 	GPIO0_DIR(4, GPIO_OUTPUT);		// (pin 27) to NAND for IGBT HI
 
-	IOCON_PIO0_5_FUNC(PIO0_5_FUNC_GPIO);
-	IOCON_PIO0_5_I2CMODE(PIO0_5_I2CMODE_GPIO);
+	IOCON->PIO0_5.FUNC = PIO0_5_FUNC_GPIO;
+	IOCON->PIO0_5.I2CMODE = I2CMODE_GPIO;
 	GPIO0_DATA(5, 0);
 	GPIO0_DIR(5, GPIO_OUTPUT);		// (pin 5) to NAND for IGBT LO
 
@@ -266,15 +355,34 @@ int main(void)
 
 	SetupPWM16B0();
 	SetupPWM16B1();
+	SetupPWM32B0();
+	SetupPWM32B1();
 	EnableTimers();
 	
-	for (int i = 0; i < 100; ++i)
-		__NOP();
-		
-	uint32_t a = TMR16B0->TC;
-	uint32_t b = TMR16B1->TC;
-	uint32_t c = TMR32B0->TC;
-	uint32_t d = TMR32B1->TC;		
+	uint64_t t1 = g_hallTimers.curr;
+	char buff[64];
+	while(1)
+	{
+		if (t1 != g_hallTimers.curr)
+		{
+			t1 = g_hallTimers.curr;
+			sprintf(buff, "%llu    %d\r\n", t1, diff);
+			uart_write_str(buff);
+		}
+	}
+	
+// 	for (int i = 0; i < 100; ++i)
+// 		__NOP();
+// 		
+// 	uint32_t a = TMR16B0->TC;
+// 	uint32_t b = TMR16B1->TC;
+// 	uint32_t c = TMR32B0->TC;
+// 	uint32_t d = TMR32B1->TC;		
 
-	__NOP();
+// 	__NOP();
+
+	while (1)
+	{
+		__NOP();
+	}
 }

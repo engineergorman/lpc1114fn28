@@ -118,7 +118,7 @@ inline uint32_t TMR16B0_IR_MR0()
 	return ((_TMR_IR*)&LPC_TMR16B0->IR)->MR0;
 }
 
-inline uint32_t TMR16B0_IR_MR0_Clear()
+inline void TMR16B0_IR_MR0_Clear()
 {
 	((_TMR_IR*)&LPC_TMR16B0->IR)->MR0 = 1;
 }
@@ -128,7 +128,7 @@ inline uint32_t TMR16B0_IR_MR1()
 	return ((_TMR_IR*)&LPC_TMR16B0->IR)->MR1;
 }
 
-inline uint32_t TMR16B0_IR_MR1_Clear()
+inline void TMR16B0_IR_MR1_Clear()
 {
 	((_TMR_IR*)&LPC_TMR16B0->IR)->MR1 = 1;
 }
@@ -138,7 +138,7 @@ inline uint32_t TMR16B0_IR_MR2()
 	return ((_TMR_IR*)&LPC_TMR16B0->IR)->MR2;
 }
 
-inline uint32_t TMR16B0_IR_MR2_Clear()
+inline void TMR16B0_IR_MR2_Clear()
 {
 	((_TMR_IR*)&LPC_TMR16B0->IR)->MR2 = 1;
 }
@@ -148,7 +148,7 @@ inline uint32_t TMR16B0_IR_MR3()
 	return ((_TMR_IR*)&LPC_TMR16B0->IR)->MR3;
 }
 
-inline uint32_t TMR16B0_IR_MR3_Clear()
+inline void TMR16B0_IR_MR3_Clear()
 {
 	((_TMR_IR*)&LPC_TMR16B0->IR)->MR3 = 1;
 }
@@ -158,7 +158,7 @@ inline uint32_t TMR16B0_IR_CR0()
 	return ((_TMR_IR*)&LPC_TMR16B0->IR)->CR0;
 }
 
-inline uint32_t TMR16B0_IR_CR0_Clear()
+inline void TMR16B0_IR_CR0_Clear()
 {
 	((_TMR_IR*)&LPC_TMR16B0->IR)->CR0 = 1;
 }
