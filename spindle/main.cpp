@@ -29,16 +29,26 @@
 
 extern "C" void SystemInit(void)
 {
-	// if you initialize clock here beware that the C++ runtime 
-	// initialization code runs next...  and writes to globals
-	// do not persist.  so the SystemFrequency needs to be set
-	// in the main() function, or just initialize the clock there
-	// for simplicity.
+	// by default the chip's pins are set to inputs with pullup resistors.
+	// we need to get the pins low before a capacitor-resistor timer
+	// crosses the 0/1 threshold enabling driving of the IGBT devices.
+	// if we dont do this we can get shoot-through condition and fry the IGBTs.
+	//LPC_GPIO0->DIR = (1<<8) |  (1<<9);
+	//LPC_GPIO0->DATA = 0;
+	
+	// Enable clock to IO Configuration block.  Needed for UART, SPI, I2C, etc...
+	SYSCON_SYSAHBCLKCTRL_IOCON(SYSAHBCLKCTRL_ENABLE);
+	__NOP();
+	__NOP();
+	IOCON->PIO1_1.FUNC = PIO1_1_FUNC_GPIO;
+	IOCON->PIO1_2.FUNC = PIO1_2_FUNC_GPIO;
+	LPC_GPIO1->DIR = (1<<1) |  (1<<2) | (1<<4);	// (1<<9) removed
+	LPC_GPIO1->DATA = 0;
 }
 
 #define PWM_FREQ		(16*1000)		// 16 KHz
-//#define PWM_DUTY_CYCLE	(3000)	// 3000 levels
-#define PWM_DUTY_CYCLE	(64000)	// 3000 levels
+#define PWM_DUTY_CYCLE	(3000)	// 3000 levels
+//#define PWM_DUTY_CYCLE	(64000)	// 3000 levels
 
 
 struct HallSensorTime
@@ -65,18 +75,17 @@ extern "C" void TIMER16_0_IRQHandler(void)
 	if (TMR16B0->IR.CR0)
 	{
 		// disable capture
-		TMR16B0->CCR.RISING_EDGE = CCR_DISABLE;
-		TMR16B0->CCR.FALLING_EDGE = CCR_DISABLE;
-// 		TMR16B0->CCR.INTERRUPT = CCR_DISABLE;
-		uint32_t timerCount = TMR16B0->TC;
+		LPC_TMR16B0->CCR = 0;		// disable rising & falling edge and interrupt.  we use this instead of bit fields because it uses fewer cycles.
 		uint32_t minor = TMR16B0->CR0;
-		uint32_t cycleResetPending = TMR16B0->IR.MR3;
+		
+		uint32_t timerCount = TMR16B0->TC;
 		uint64_t major = g_hallTimers.cycles;
-		if (timerCount < minor && !cycleResetPending)
+		if (timerCount < minor)
 		{
 			// timer counter has wrapped around.  we need to back up
 			// time unless the cycle reset interrupt is still pending.
-			major -= PWM_DUTY_CYCLE;
+			if (!TMR16B0->IR.MR3)
+				major -= PWM_DUTY_CYCLE;
 		}
 		// DEBUG DEBUG
 		diff = (int)timerCount - (int)minor;
@@ -85,20 +94,20 @@ extern "C" void TIMER16_0_IRQHandler(void)
 		g_hallTimers.prev = g_hallTimers.curr;
 		g_hallTimers.curr = g_hallTimers.cycles + major;
 		
-		TMR16B0->IR.CR0 = 1;	// clear the interrupt
+		//TMR16B0->IR.CR0 = 1;	// clear the interrupt
 
-		TMR16B0->CCR.RISING_EDGE = CCR_ENABLE;
-		TMR16B0->CCR.FALLING_EDGE = CCR_ENABLE;
-// 		TMR16B0->CCR.INTERRUPT = CCR_ENABLE;
-
+		//TMR16B0->CCR.RISING_EDGE = CCR_ENABLE;
+		//TMR16B0->CCR.FALLING_EDGE = CCR_ENABLE;
+		LPC_TMR16B0->CCR = 0x7;		// enable rising & falling edge and interrupt.  we use this instead of bit fields because it uses fewer cycles.
 	}
 
 	if (TMR16B0->IR.MR3)
 	{
 		g_hallTimers.cycles += PWM_DUTY_CYCLE;
-		TMR16B0->IR.MR3 = 1;	// clear the interrupt
+		//TMR16B0->IR.MR3 = 1;	// clear the interrupt
 	}
-	__NOP();__NOP();
+	LPC_TMR16B0->IR = 0x1F;		// clear all interrupts
+	__NOP();__NOP();	// voodoo... not sure why or if this is required
 	__enable_irq();
 }
 
@@ -139,13 +148,6 @@ void SetupPWM16B0()
 	// Enables clock for counter/timer
 	SYSCON_SYSAHBCLKCTRL_CT16B0(SYSAHBCLKCTRL_ENABLE);
 
-	// setup pins 1,2 for PWM output
-	IOCON->PIO0_8.FUNC = PIO0_8_FUNC_TIMER;
-	IOCON->PIO0_9.FUNC = PIO0_9_FUNC_TIMER;
-
-	// disable pullup resistor pins 1,2
-	IOCON->PIO0_8.MODE = MODE_NO_RESISTOR;
-	IOCON->PIO0_9.MODE = MODE_NO_RESISTOR;
 
 	// setup pin 25 for timer capture input
 	IOCON->PIO0_2.FUNC = PIO0_2_FUNC_TIMER;
@@ -160,8 +162,8 @@ void SetupPWM16B0()
 	// set PWM duty cycle
 	TMR16B0->MR3 = PWM_DUTY_CYCLE - 1;	// TC will take on values from 0.. DUTY_CYCLE-1
 	// set pulse width
-	TMR16B0->MR0 = PWM_DUTY_CYCLE;	// this essentially turns off the pin
-	TMR16B0->MR1 = PWM_DUTY_CYCLE;	// this essentially turns off the pin
+	TMR16B0->MR0 = 0;	// this essentially turns off the pin
+	TMR16B0->MR1 = 0;	// this essentially turns off the pin
 	// enable PWM mode on match registers 0,1 (MR0, MR1)
 	TMR16B0->PWMC.PWMEN0 = PWMC_ENABLE;
 	TMR16B0->PWMC.PWMEN1 = PWMC_ENABLE;
@@ -170,7 +172,15 @@ void SetupPWM16B0()
 	TMR16B0->CCR.RISING_EDGE = CCR_ENABLE;
 	TMR16B0->CCR.FALLING_EDGE = CCR_ENABLE;
 	TMR16B0->CCR.INTERRUPT = CCR_ENABLE;
-	
+
+	// setup pins 1,2 for PWM output
+	IOCON->PIO0_8.FUNC = PIO0_8_FUNC_TIMER;
+	IOCON->PIO0_9.FUNC = PIO0_9_FUNC_TIMER;
+
+	// disable pullup resistor pins 1,2
+//	IOCON->PIO0_8.MODE = MODE_NO_RESISTOR;
+//	IOCON->PIO0_9.MODE = MODE_NO_RESISTOR;
+
 	// Enable interrupt
 	NVIC_EnableIRQ(TIMER_16_0_IRQn);
 }
@@ -316,17 +326,47 @@ inline bool isDigit(char c)
 // to switch on the IGBT drivers.
 void EnableDrivers(bool enable)
 {
-	if (enable)
-	{
-		GPIO0_DATA(4, 1);
-		GPIO0_DATA(5, 1);
-	}
-	else
-	{
-		GPIO0_DATA(4, 0);
-		GPIO0_DATA(5, 0);
-	}
+
 }
+
+struct Phase
+{
+	uint8_t AH : 1;
+	uint8_t BH : 1;
+	uint8_t CH : 1;
+
+	uint8_t AL : 1;
+	uint8_t BL : 1;
+	uint8_t CL : 1;
+};
+
+Phase g_phases[] = {
+	{ 0,0,0, 0,0,0 },
+	{ 1,0,0, 0,0,1 },
+	{ 0,1,0, 1,0,0 },
+	{ 0,1,0, 0,0,1 },
+	{ 0,0,1, 0,1,0 },
+	{ 1,0,0, 0,1,0 },
+	{ 0,0,1, 1,0,0 },
+	{ 0,0,0, 0,0,0 },
+};
+
+struct Hall
+{
+	uint8_t S0 : 1;
+	uint8_t S1 : 1;
+	uint8_t S2 : 1;
+};
+
+Hall g_hallSequence[] = {
+	{ 1,0,1 },
+	{ 1,0,0 },
+	{ 1,1,0 },
+	{ 0,1,0 },
+	{ 0,1,1 },
+	{ 0,0,1 }
+};
+
 
 int main(void)
 {
@@ -334,21 +374,8 @@ int main(void)
 	SystemFrequency = ConfigurePLL(12000000UL, 48000000UL);
 		
 	// Enable clock to IO Configuration block.  Needed for UART, SPI, I2C, etc...
-	SYSCON_SYSAHBCLKCTRL_IOCON(SYSAHBCLKCTRL_ENABLE);
-	
-	// ports 0_4 (pin 27) and 0_5 (pin 5) default to Input with Open Drain.
-	// pins have an external pulldown resistor and connect to the B inputs of the
-	// NAND gates.  this turns off all IGBT modules by default.
-	IOCON->PIO0_4.FUNC = PIO0_4_FUNC_GPIO;
-	IOCON->PIO0_4.I2CMODE = I2CMODE_GPIO;
-	GPIO0_DATA(4, 0);
-	GPIO0_DIR(4, GPIO_OUTPUT);		// (pin 27) to NAND for IGBT HI
-
-	IOCON->PIO0_5.FUNC = PIO0_5_FUNC_GPIO;
-	IOCON->PIO0_5.I2CMODE = I2CMODE_GPIO;
-	GPIO0_DATA(5, 0);
-	GPIO0_DIR(5, GPIO_OUTPUT);		// (pin 5) to NAND for IGBT LO
-
+//	SYSCON_SYSAHBCLKCTRL_IOCON(SYSAHBCLKCTRL_ENABLE);
+#if 1
 	uart_init(UART_BAUDRATE_115200);
 	uart_open();
 	uart_write_str("CNC spindle control.\r\n");
@@ -358,7 +385,8 @@ int main(void)
 	SetupPWM32B0();
 	SetupPWM32B1();
 	EnableTimers();
-	
+
+#if 0
 	uint64_t t1 = g_hallTimers.curr;
 	char buff[64];
 	while(1)
@@ -366,10 +394,22 @@ int main(void)
 		if (t1 != g_hallTimers.curr)
 		{
 			t1 = g_hallTimers.curr;
-			sprintf(buff, "%llu    %d\r\n", t1, diff);
+			uint32_t pin = GPIO0_DATA(2);
+			sprintf(buff, "%llu    %d   %d\r\n", t1, diff, pin);
 			uart_write_str(buff);
+			
+			EnableDrivers(true);
+			TMR16B0->MR0 = 1500;
+			
 		}
 	}
+#endif
+
+	for (int i = 0; i < 1000000; ++i)
+		__NOP();
+
+	EnableDrivers(true);
+	TMR16B0->MR0 = 1500;
 	
 // 	for (int i = 0; i < 100; ++i)
 // 		__NOP();
@@ -380,7 +420,7 @@ int main(void)
 // 	uint32_t d = TMR32B1->TC;		
 
 // 	__NOP();
-
+#endif
 	while (1)
 	{
 		__NOP();
