@@ -73,6 +73,7 @@
 // MAT3 - CL  (PIO_1_4, pin 13)
 // CAP0 - Hall2 (PIO_1_0, pin 9)
 
+
 extern "C" void SystemInit(void)
 {
 	// Enable clock to IO Configuration block.  Needed for UART, SPI, I2C, etc...
@@ -95,21 +96,58 @@ extern "C" void SystemInit(void)
 #define PWM_FREQ		(16*1000)		// 16 KHz
 #define PWM_DUTY_CYCLE	(3000)	// 3000 levels
 
-struct HallSensorTime
+
+volatile uint64_t g_cycles;
+volatile uint64_t g_curr;
+volatile uint64_t g_prev;
+
+#if 0
+inline void GetTimer(uint32_t & timer, uint64_t & cycles)
 {
-	uint32_t cycle_count;
-	uint32_t subcycle_count;
-};
+	// check the reset interrupt and make sure that
+	// g_cycles is consistent with current TC.
+	cycles = g_cycles;
+	timer = TMR16B0->TC;
+	if (TMR16B0->IR.MR3)
+	{
+		// in the time that we sampled the TC and the interrupt register
+		// it could have wrapped around to zero.  so we have to sample it
+		// again to be consistent.
+		timer = TMR16B0->TC;
+		cycles += PWM_DUTY_CYCLE;
+		g_cycles = cycles;
+		TMR16B0->IR.MR3 = 0;
+	}
+}
+#endif
 
-struct HallTimers
+inline void RecordEvent(uint32_t minor)
 {
-	uint64_t cycles;
-
-	uint64_t curr;
-	uint64_t prev;
-};
-
-HallTimers g_hallTimers;
+	// check the reset interrupt and make sure that
+	// g_cycles is consistent with current TC.
+	uint64_t cycles = g_cycles;
+	uint32_t timer = TMR16B0->TC;
+	if (TMR16B0->IR.MR3)
+	{
+		// in the time that we sampled the TC and the interrupt register
+		// it could have wrapped around to zero.  so we have to sample it
+		// again to be consistent.
+		timer = TMR16B0->TC;
+		cycles += PWM_DUTY_CYCLE;
+		g_cycles = cycles;
+		TMR16B0->IR.MR3 = 0;
+	}
+	
+	g_prev = g_curr;
+	if (timer < minor)
+	{
+		g_curr = cycles + ((int32_t)minor - (int32_t)PWM_DUTY_CYCLE);
+	}
+	else
+	{
+		g_curr = cycles + minor;
+	}
+}
 
 extern "C" void TIMER16_0_IRQHandler(void)
 {
@@ -119,29 +157,14 @@ extern "C" void TIMER16_0_IRQHandler(void)
 		// disable capture
 		LPC_TMR16B0->CCR = 0;		// disable rising & falling edge and interrupt.  
 														// we use this instead of bit fields because it uses fewer cycles.
-		uint32_t minor = TMR16B0->CR0;
-		uint32_t timerCount = TMR16B0->TC;
-		uint64_t major = g_hallTimers.cycles;
-		if (timerCount < minor)
-		{
-			// timer counter has wrapped around.  we need to back up
-			// time unless the cycle reset interrupt is still pending.
-			if (!TMR16B0->IR.MR3)
-				major -= PWM_DUTY_CYCLE;
-		}
-		
-		major += minor;
-		g_hallTimers.prev = g_hallTimers.curr;
-		g_hallTimers.curr = g_hallTimers.cycles + major;
-
+		RecordEvent(TMR16B0->CR0);
 		LPC_TMR16B0->CCR = 0x7;		// enable rising & falling edge and interrupt.  
 															// we use this instead of bit fields because it uses fewer cycles.
-		// interrupt is cleared below
 	}
 
 	if (TMR16B0->IR.MR3)
 	{
-		g_hallTimers.cycles += PWM_DUTY_CYCLE;
+		g_cycles += PWM_DUTY_CYCLE;
 	}
 	LPC_TMR16B0->IR = 0x1F;		// clear all interrupts
 	__NOP();__NOP();	// voodoo... not sure if this is required
@@ -156,21 +179,7 @@ extern "C" void TIMER16_1_IRQHandler(void)
 		// disable capture
 		LPC_TMR16B1->CCR = 0;		// disable rising & falling edge and interrupt.  
 														// we use this instead of bit fields because it uses fewer cycles.
-		uint32_t minor = TMR16B1->CR0;
-		uint32_t timerCount = TMR16B0->TC;	// not a typo, we really do want B0
-		uint64_t major = g_hallTimers.cycles;
-		if (timerCount < minor)
-		{
-			// timer counter has wrapped around.  we need to back up
-			// time unless the cycle reset interrupt is still pending.
-			if (!TMR16B0->IR.MR3)		// not a typo, we really do want B0
-				major -= PWM_DUTY_CYCLE;
-		}
-		
-		major += minor;
-		g_hallTimers.prev = g_hallTimers.curr;
-		g_hallTimers.curr = g_hallTimers.cycles + major;
-
+		RecordEvent(TMR16B0->CR0);
 		LPC_TMR16B1->CCR = 0x7;		// enable rising & falling edge and interrupt.  
 															// we use this instead of bit fields because it uses fewer cycles.
 	}
@@ -188,21 +197,6 @@ extern "C" void TIMER32_0_IRQHandler(void)
 		// disable capture
 		LPC_TMR32B0->CCR = 0;		// disable rising & falling edge and interrupt.  
 														// we use this instead of bit fields because it uses fewer cycles.
-		uint32_t minor = TMR32B0->CR0;
-		uint32_t timerCount = TMR16B0->TC;	// not a typo, we really do want 16B0
-		uint64_t major = g_hallTimers.cycles;
-		if (timerCount < minor)
-		{
-			// timer counter has wrapped around.  we need to back up
-			// time unless the cycle reset interrupt is still pending.
-			if (!TMR16B0->IR.MR3)		// not a typo, we really do want 16B0
-				major -= PWM_DUTY_CYCLE;
-		}
-		
-		major += minor;
-		g_hallTimers.prev = g_hallTimers.curr;
-		g_hallTimers.curr = g_hallTimers.cycles + major;
-
 		LPC_TMR32B0->CCR = 0x7;		// enable rising & falling edge and interrupt.  
 															// we use this instead of bit fields because it uses fewer cycles.
 	}
@@ -221,20 +215,7 @@ extern "C" void TIMER32_1_IRQHandler(void)
 		LPC_TMR32B1->CCR = 0;		// disable rising & falling edge and interrupt.  
 														// we use this instead of bit fields because it uses fewer cycles.
 		uint32_t minor = TMR32B1->CR0;
-		uint32_t timerCount = TMR16B0->TC;	// not a typo, we really do want 16B0
-		uint64_t major = g_hallTimers.cycles;
-		if (timerCount < minor)
-		{
-			// timer counter has wrapped around.  we need to back up
-			// time unless the cycle reset interrupt is still pending.
-			if (!TMR16B0->IR.MR3)		// not a typo, we really do want 16B0
-				major -= PWM_DUTY_CYCLE;
-		}
-		
-		major += minor;
-		g_hallTimers.prev = g_hallTimers.curr;
-		g_hallTimers.curr = g_hallTimers.cycles + major;
-
+		RecordEvent(TMR32B1->CR0);
 		LPC_TMR32B1->CCR = 0x7;		// enable rising & falling edge and interrupt.  
 															// we use this instead of bit fields because it uses fewer cycles.
 	}
@@ -242,6 +223,44 @@ extern "C" void TIMER32_1_IRQHandler(void)
 	LPC_TMR32B1->IR = 0x1F;		// clear all interrupts
 	__NOP();__NOP();	// voodoo... not sure if this is required
 	__enable_irq();
+}
+
+inline void GetHallSensorEvent(uint64_t & curr, uint64_t & prev)
+{
+	// try to do an atomic read of the two values
+	uint64_t tmp = g_prev;
+	curr = g_curr;
+	prev = g_prev;
+	if (prev != tmp)
+	{
+		// interrupt handler was called between reading g_curr and g_prev
+		curr = g_curr;
+	}
+}
+
+inline void AH(uint32_t duty)
+{
+	TMR16B0->MR0 = PWM_DUTY_CYCLE - duty;
+}
+inline void BH(uint32_t duty)
+{
+	TMR16B0->MR1 = PWM_DUTY_CYCLE - duty;
+}
+inline void CH(uint32_t duty)
+{
+	TMR16B1->MR0 = PWM_DUTY_CYCLE - duty;
+}
+inline void AL(uint32_t duty)
+{
+	TMR32B1->MR0 = duty;
+}
+inline void BL(uint32_t duty)
+{
+	TMR32B1->MR1 = duty;
+}
+inline void CL(uint32_t duty)
+{
+	TMR32B1->MR3 = duty;
 }
 
 void SetupPWM16B0()
@@ -264,8 +283,8 @@ void SetupPWM16B0()
 	// set PWM duty cycle
 	TMR16B0->MR3 = PWM_DUTY_CYCLE - 1;	// TC will take on values from 0.. DUTY_CYCLE-1
 	// set pulse width
-	TMR16B0->MR0 = 0;	// this essentially turns off the pin
-	TMR16B0->MR1 = 0;	// this essentially turns off the pin
+	AH(0);	// turn off
+	BH(0);	// turn off
 	
 	// enable PWM mode on match registers 0,1 (MR0, MR1)
 	TMR16B0->PWMC.PWMEN0 = PWMC_ENABLE;
@@ -306,7 +325,7 @@ void SetupPWM16B1()
 	// set PWM duty cycle
 	TMR16B1->MR3 = PWM_DUTY_CYCLE - 1;	// TC will take on values from 0.. DUTY_CYCLE-1
 	// set pulse width
-	TMR16B1->MR0 = 0;
+	CH(0);
 	// enable PWM mode on match register 0 (MR0)
 	TMR16B1->PWMC.PWMEN0 = PWMC_ENABLE;
 
@@ -361,10 +380,10 @@ void SetupPWM32B0()
 
 void SetupPWM32B1()
 {
-	// MAT0 - AH  (PIO_1_1, pin 10)
-	// MAT1 - BH  (PIO_1_2, pin 11)
+	// MAT0 - AL  (PIO_1_1, pin 10)
+	// MAT1 - BL  (PIO_1_2, pin 11)
 	// MAT2 -
-	// MAT3 - CH  (PIO_1_4, pin 13)
+	// MAT3 - CL  (PIO_1_4, pin 13)
 	// CAP0 - Hall2 (PIO_1_0, pin 9)
 	
 	// Enables clock for counter/timer
@@ -377,9 +396,9 @@ void SetupPWM32B1()
 	// set PWM duty cycle
 	TMR32B1->MR2 = PWM_DUTY_CYCLE - 1;	// TC will take on values from 0.. DUTY_CYCLE-1
 	// set pulse width
-	TMR32B1->MR0 = 0;
-	TMR32B1->MR1 = 0;
-	TMR32B1->MR3 = 0;
+	AL(0);
+	BL(0);
+	CL(0);
 	// enable PWM mode on match register 0,1,3 (MR0,1,3)
 	TMR32B1->PWMC.PWMEN0 = PWMC_ENABLE;
 	TMR32B1->PWMC.PWMEN1 = PWMC_ENABLE;
@@ -426,25 +445,44 @@ inline bool isDigit(char c)
 	return c >= '0' && c <= '9';
 }
 
-// EnableDrivers() - if enable is 'true' then we drive the 
-// B side of the NAND gates to HI which allows the PWM outputs to 
-// to switch on the IGBT drivers.
-void EnableDrivers(bool enable)
-{
-
-}
-
 struct Phase
 {
-	uint8_t AH : 1;
-	uint8_t BH : 1;
-	uint8_t CH : 1;
+	uint8_t ah : 1;
+	uint8_t bh : 1;
+	uint8_t ch : 1;
 
-	uint8_t AL : 1;
-	uint8_t BL : 1;
-	uint8_t CL : 1;
+	uint8_t al : 1;
+	uint8_t bl : 1;
+	uint8_t cl : 1;
+	
+	void Engage(uint32_t amount)
+	{
+		// TODO:  need a way to reliably set the MR outputs now and not wait until end of PWM cycle for it to happen
+		AH(0);
+		BH(0);
+		CH(0);
+		AL(0);
+		BL(0);
+		CL(0);
+		
+		if (ah)
+			AH(amount);
+		if (bh)
+			BH(amount);
+		if (ch)
+			CH(amount);
+
+		if (al)
+			AL(PWM_DUTY_CYCLE);
+		if (bl)
+			BL(PWM_DUTY_CYCLE);
+		if (cl)
+			CL(PWM_DUTY_CYCLE);
+	}
 };
 
+// the hall sensor inputs form a 3-bit number that is used as an
+// index into this table for commutating forward.
 Phase g_phases[] = {
 	{ 0,0,0, 0,0,0 },
 	{ 1,0,0, 0,0,1 },
@@ -461,6 +499,11 @@ struct Hall
 	uint8_t S0 : 1;
 	uint8_t S1 : 1;
 	uint8_t S2 : 1;
+	
+	inline uint8_t ToIndex()
+	{
+		return *(uint8_t*)this;
+	}
 };
 
 Hall g_hallSequence[] = {
@@ -477,19 +520,21 @@ int main(void)
 {
 	// Set system frequency to 48MHz
 	SystemFrequency = ConfigurePLL(12000000UL, 48000000UL);
-		
-	// Enable clock to IO Configuration block.  Needed for UART, SPI, I2C, etc...
-//	SYSCON_SYSAHBCLKCTRL_IOCON(SYSAHBCLKCTRL_ENABLE);
-#if 1
+	
+
 	uart_init(UART_BAUDRATE_115200);
 	uart_open();
 	uart_write_str("CNC spindle control.\r\n");
 
+
+	for (int j = 0; j < 200000; ++j)  __NOP();
+	
 	SetupPWM16B0();
 	SetupPWM16B1();
 	SetupPWM32B0();
 	SetupPWM32B1();
 	EnableTimers();
+	
 
 #if 0
 	uint64_t t1 = g_hallTimers.curr;
@@ -503,31 +548,23 @@ int main(void)
 			sprintf(buff, "%llu    %d   %d\r\n", t1, diff, pin);
 			uart_write_str(buff);
 			
-			EnableDrivers(true);
 			TMR16B0->MR0 = 1500;
 			
 		}
 	}
 #endif
 
-	for (int i = 0; i < 1000000; ++i)
-		__NOP();
-
-	EnableDrivers(true);
-	TMR16B0->MR0 = 1500;
-	
-// 	for (int i = 0; i < 100; ++i)
-// 		__NOP();
-// 		
-// 	uint32_t a = TMR16B0->TC;
-// 	uint32_t b = TMR16B1->TC;
-// 	uint32_t c = TMR32B0->TC;
-// 	uint32_t d = TMR32B1->TC;		
-
-// 	__NOP();
-#endif
 	while (1)
 	{
-		__NOP();
+		for (int i = 0; i < 6; ++i)
+		{
+			for (int j = 0; j < 100000; ++j)
+				__NOP();
+
+			Hall & sensorIn = g_hallSequence[i];
+			int idx = sensorIn.ToIndex();
+			Phase & phase = g_phases[idx];
+			phase.Engage(300);
+		}
 	}
 }
