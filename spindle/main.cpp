@@ -458,26 +458,36 @@ struct Phase
 	void Engage(uint32_t amount)
 	{
 		// TODO:  need a way to reliably set the MR outputs now and not wait until end of PWM cycle for it to happen
-		AH(0);
-		BH(0);
-		CH(0);
-		AL(0);
-		BL(0);
-		CL(0);
 		
 		if (ah)
 			AH(amount);
+		else
+			AH(0);
+			
 		if (bh)
 			BH(amount);
+		else
+			BH(0);
+			
 		if (ch)
 			CH(amount);
+		else
+			CH(0);
 
 		if (al)
 			AL(PWM_DUTY_CYCLE);
+		else
+			AL(0);
+			
 		if (bl)
 			BL(PWM_DUTY_CYCLE);
+		else
+			BL(0);
+			
 		if (cl)
 			CL(PWM_DUTY_CYCLE);
+		else
+			CL(0);
 	}
 };
 
@@ -496,9 +506,9 @@ Phase g_phases[] = {
 
 struct Hall
 {
-	uint8_t S0 : 1;
-	uint8_t S1 : 1;
-	uint8_t S2 : 1;
+	uint8_t h0 : 1;
+	uint8_t h1 : 1;
+	uint8_t h2 : 1;
 	
 	inline uint8_t ToIndex()
 	{
@@ -526,6 +536,9 @@ int main(void)
 	uart_open();
 	uart_write_str("CNC spindle control.\r\n");
 
+	g_cycles = 0;
+	g_curr = 0;
+	g_prev = 0;
 
 	for (int j = 0; j < 200000; ++j)  __NOP();
 	
@@ -535,36 +548,51 @@ int main(void)
 	SetupPWM32B1();
 	EnableTimers();
 	
+	uint64_t curr;
+	uint64_t prev;
 
-#if 0
-	uint64_t t1 = g_hallTimers.curr;
+	uint64_t last_curr = 0;
+	uint64_t last_prev = 0;
 	char buff[64];
-	while(1)
+	sprintf(buff, ".");
+
+	Hall sensorIn;
+#if 1
+	while (1)
 	{
-		if (t1 != g_hallTimers.curr)
+		GetHallSensorEvent(curr, prev);
+		if (curr != last_curr)
 		{
-			t1 = g_hallTimers.curr;
-			uint32_t pin = GPIO0_DATA(2);
-			sprintf(buff, "%llu    %d   %d\r\n", t1, diff, pin);
-			uart_write_str(buff);
+			sensorIn.h0 = GPIO0_DATA(2) >> 2;
+			sensorIn.h1 = GPIO1_DATA(8) >> 8;
+			sensorIn.h2 = GPIO1_DATA(0);
+			int idx = sensorIn.ToIndex();
+			Phase & phase = g_phases[idx];
+			phase.Engage(1000);
+
+// 			int64_t delta = (int64_t)curr - (int64_t)prev;
+// 			sprintf(buff, "%lld   %d %d %d  %d\r\n", delta, sensorIn.h0, sensorIn.h1, sensorIn.h2, idx );
+// 			uart_write_str(buff);
+ 			//uart_write_str(buff);
+
 			
-			TMR16B0->MR0 = 1500;
-			
+			last_curr = curr;
+			last_prev = prev;
 		}
 	}
-#endif
+
+#else
 
 	while (1)
 	{
 		for (int i = 0; i < 6; ++i)
 		{
-			for (int j = 0; j < 100000; ++j)
-				__NOP();
-
-			Hall & sensorIn = g_hallSequence[i];
+			for (int j = 0; j < 200000; ++j)  __NOP();
+			sensorIn = g_hallSequence[i];
 			int idx = sensorIn.ToIndex();
 			Phase & phase = g_phases[idx];
-			phase.Engage(300);
+			phase.Engage(500);
 		}
 	}
+#endif	
 }
