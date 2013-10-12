@@ -26,6 +26,8 @@
 #include "stdlib.h"
 #include "stdio.h"
 
+#define HALLTEST
+
 //
 // When the LPC1114FN28 boots up, the pins start
 // hi, then go lo for a short time, then hi again.
@@ -179,7 +181,7 @@ extern "C" void TIMER16_1_IRQHandler(void)
 		// disable capture
 		LPC_TMR16B1->CCR = 0;		// disable rising & falling edge and interrupt.  
 														// we use this instead of bit fields because it uses fewer cycles.
-		RecordEvent(TMR16B0->CR0);
+		RecordEvent(TMR16B1->CR0);
 		LPC_TMR16B1->CCR = 0x7;		// enable rising & falling edge and interrupt.  
 															// we use this instead of bit fields because it uses fewer cycles.
 	}
@@ -214,7 +216,6 @@ extern "C" void TIMER32_1_IRQHandler(void)
 		// disable capture
 		LPC_TMR32B1->CCR = 0;		// disable rising & falling edge and interrupt.  
 														// we use this instead of bit fields because it uses fewer cycles.
-		uint32_t minor = TMR32B1->CR0;
 		RecordEvent(TMR32B1->CR0);
 		LPC_TMR32B1->CCR = 0x7;		// enable rising & falling edge and interrupt.  
 															// we use this instead of bit fields because it uses fewer cycles.
@@ -278,8 +279,10 @@ void SetupPWM16B0()
 	TMR16B0->PR = 0;	// TC incremented on every PCLK
 	// set match register 3 to reset TC
 	TMR16B0->MCR.MR3R = MCR_ENABLE;
+#ifndef HALLTEST
 	// set match register 3 to generate interrupt
 	TMR16B0->MCR.MR3I = MCR_ENABLE;
+#endif	
 	// set PWM duty cycle
 	TMR16B0->MR3 = PWM_DUTY_CYCLE - 1;	// TC will take on values from 0.. DUTY_CYCLE-1
 	// set pulse width
@@ -290,21 +293,28 @@ void SetupPWM16B0()
 	TMR16B0->PWMC.PWMEN0 = PWMC_ENABLE;
 	TMR16B0->PWMC.PWMEN1 = PWMC_ENABLE;
 
+#ifdef HALLTEST
+	IOCON->PIO0_2.FUNC = PIO0_2_FUNC_GPIO;
+	IOCON->PIO0_2.HYS = HYS_ENABLE;
+	GPIO0_DIR(2, GPIO_INPUT);
+#else
 	// setup capture control register
 	TMR16B0->CCR.RISING_EDGE = CCR_ENABLE;
 	TMR16B0->CCR.FALLING_EDGE = CCR_ENABLE;
 	TMR16B0->CCR.INTERRUPT = CCR_ENABLE;
-
 	// setup pin 25 for timer capture input
 	IOCON->PIO0_2.FUNC = PIO0_2_FUNC_TIMER;
 	IOCON->PIO0_2.HYS = HYS_ENABLE;
+#endif
 
 	// setup pins 1,2 for PWM output
 	IOCON->PIO0_8.FUNC = PIO0_8_FUNC_TIMER;
 	IOCON->PIO0_9.FUNC = PIO0_9_FUNC_TIMER;
 
+#ifndef HALLTEST
 	// Enable interrupt
 	NVIC_EnableIRQ(TIMER_16_0_IRQn);
+#endif
 }
 
 void SetupPWM16B1()
@@ -329,20 +339,27 @@ void SetupPWM16B1()
 	// enable PWM mode on match register 0 (MR0)
 	TMR16B1->PWMC.PWMEN0 = PWMC_ENABLE;
 
+#ifdef HALLTEST
+	IOCON->PIO1_8.FUNC = PIO1_8_FUNC_GPIO;
+	IOCON->PIO1_8.HYS = HYS_ENABLE;
+	GPIO1_DIR(8, GPIO_INPUT);
+#else
 	// setup capture control register
 	TMR16B1->CCR.RISING_EDGE = CCR_ENABLE;
 	TMR16B1->CCR.FALLING_EDGE = CCR_ENABLE;
 	TMR16B1->CCR.INTERRUPT = CCR_ENABLE;
-
 	// setup pin 17 for timer capture input
 	IOCON->PIO1_8.FUNC = PIO1_8_FUNC_TIMER;
 	IOCON->PIO1_8.HYS = HYS_ENABLE;
+#endif
 
 	// setup pin 18 for PWM output
 	IOCON->PIO1_9.FUNC = PIO1_9_FUNC_TIMER;
 
+#ifndef HALLTEST
 	// Enable interrupt
 	NVIC_EnableIRQ(TIMER_16_1_IRQn);
+#endif
 }
 
 void SetupPWM32B0()
@@ -404,22 +421,29 @@ void SetupPWM32B1()
 	TMR32B1->PWMC.PWMEN1 = PWMC_ENABLE;
 	TMR32B1->PWMC.PWMEN3 = PWMC_ENABLE;
 
+#ifdef HALLTEST
+	IOCON->PIO1_0.FUNC = PIO1_0_FUNC_GPIO;
+	IOCON->PIO1_0.HYS = HYS_ENABLE;
+	GPIO1_DIR(0, GPIO_INPUT);
+#else
 	// setup capture control register
 	TMR32B1->CCR.RISING_EDGE = CCR_ENABLE;
 	TMR32B1->CCR.FALLING_EDGE = CCR_ENABLE;
 	TMR32B1->CCR.INTERRUPT = CCR_ENABLE;
-
 	// setup pin 19 for timer capture input
 	IOCON->PIO1_0.FUNC = PIO1_0_FUNC_TIMER;
 	IOCON->PIO1_0.HYS = HYS_ENABLE;
+#endif
 
 	// setup pins 10, 11, 13 for PWM output
 	IOCON->PIO1_1.FUNC = PIO1_1_FUNC_TIMER;
 	IOCON->PIO1_2.FUNC = PIO1_2_FUNC_TIMER;
 	IOCON->PIO1_4.FUNC = PIO1_4_FUNC_TIMER;
 	
+#ifndef HALLTEST
 	// Enable interrupt
 	NVIC_EnableIRQ(TIMER_32_1_IRQn);
+#endif
 }
 
 void EnableTimers()
@@ -428,13 +452,13 @@ void EnableTimers()
 	//	it takes 4 cycles to enable each clock
 	TMR16B0->TC = 0;
 	TMR16B1->TC = 4;
-	TMR32B0->TC = 8;
-	TMR32B1->TC = 12;
+	//TMR32B0->TC = 8;
+	TMR32B1->TC = 8;
 	
 	// NOTE: don't use bitfields for this because timing is critical
 	LPC_TMR16B0->TCR = 1;
 	LPC_TMR16B1->TCR = 1;
-	LPC_TMR32B0->TCR = 1;
+	//LPC_TMR32B0->TCR = 1;
 	LPC_TMR32B1->TCR = 1;
 
 	// all four clocks should be in sync at this point
@@ -447,13 +471,13 @@ inline bool isDigit(char c)
 
 struct Phase
 {
-	uint8_t ah : 1;
-	uint8_t bh : 1;
-	uint8_t ch : 1;
-
 	uint8_t al : 1;
 	uint8_t bl : 1;
 	uint8_t cl : 1;
+
+	uint8_t ah : 1;
+	uint8_t bh : 1;
+	uint8_t ch : 1;
 	
 	void Engage(uint32_t amount)
 	{
@@ -525,6 +549,17 @@ Hall g_hallSequence[] = {
 	{ 0,0,1 }
 };
 
+int LookupHallSeq(int idx)
+{
+	for (int k = 0; k < 6; ++k)
+	{
+		if (idx == g_hallSequence[k].ToIndex())
+		{
+			return k;
+		}
+	}
+	return 99999999;
+}
 
 int main(void)
 {
@@ -544,7 +579,7 @@ int main(void)
 	
 	SetupPWM16B0();
 	SetupPWM16B1();
-	SetupPWM32B0();
+	//SetupPWM32B0();
 	SetupPWM32B1();
 	EnableTimers();
 	
@@ -557,7 +592,9 @@ int main(void)
 	sprintf(buff, ".");
 
 	Hall sensorIn;
-#if 1
+	int seq = -1;
+	
+#if 0
 	while (1)
 	{
 		GetHallSensorEvent(curr, prev);
@@ -568,21 +605,55 @@ int main(void)
 			sensorIn.h2 = GPIO1_DATA(0);
 			int idx = sensorIn.ToIndex();
 			Phase & phase = g_phases[idx];
-			phase.Engage(1000);
+			phase.Engage(500);
+
+			if (seq == -1)
+			{
+				seq = LookupHallSeq(idx);
+			}
+			else
+			{
+				if (idx != g_hallSequence[seq].ToIndex())
+				{
+					int tmp = LookupHallSeq(idx);
+					sprintf(buff, "should be = %d,  actual = %d \r\n", seq, tmp );
+					uart_write_str(buff);
+					seq = tmp;
+				}
+			}
+			seq = (seq + 1) % 6;
 
 // 			int64_t delta = (int64_t)curr - (int64_t)prev;
 // 			sprintf(buff, "%lld   %d %d %d  %d\r\n", delta, sensorIn.h0, sensorIn.h1, sensorIn.h2, idx );
 // 			uart_write_str(buff);
  			//uart_write_str(buff);
 
-			
 			last_curr = curr;
 			last_prev = prev;
 		}
 	}
 
-#else
+#endif
 
+#if 1
+	int lastIdx = -1;
+	while (1)
+	{
+		sensorIn.h0 = GPIO0_DATA(2) >> 2;
+		sensorIn.h1 = GPIO1_DATA(8) >> 8;
+		sensorIn.h2 = GPIO1_DATA(0);
+		int idx = sensorIn.ToIndex();
+		if (idx != lastIdx)
+		{
+			Phase & phase = g_phases[idx];
+			phase.Engage(1000);
+			lastIdx = idx;
+		}
+	}
+
+#endif
+
+#if 0
 	while (1)
 	{
 		for (int i = 0; i < 6; ++i)
