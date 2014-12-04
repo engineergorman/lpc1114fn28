@@ -23,9 +23,7 @@
 
 #include <LPC11xx.h>
 #include "../core/core.h"
-#include "stdio.h"
 
-//uint32_t SystemFrequency;
 
 
 extern "C" void SystemInit(void)
@@ -38,6 +36,24 @@ extern "C" void SystemInit(void)
 }
 
 
+volatile unsigned long SysTickCnt;      // SysTick Counter
+
+// SysTick Interrupt Handler (1ms)
+extern "C" void SysTick_Handler(void) 
+{           
+  SysTickCnt++;
+}
+
+void Delay(unsigned long tick)
+{
+  unsigned long systickcnt;
+
+  systickcnt = SysTickCnt;
+	// TODO: handle when SysTickCnt overflows
+  while ((SysTickCnt - systickcnt) < tick);
+}
+
+
 int main(void)
 {
 	// Set system frequency to 48MHz
@@ -45,57 +61,70 @@ int main(void)
 
 	// Enable clock to IO Configuration block.  Needed for UART, SPI, I2C, etc...
 	SYSCON_SYSAHBCLKCTRL_IOCON(SYSAHBCLKCTRL_ENABLE);
-		
+	
+  SysTick_Config(SystemFrequency/1000 - 1); // Generate interrupt each 1 ms
+	
 	// set direction on port 0_7 (pin 28) to output
 	GPIO0_DIR(7, GPIO_OUTPUT);	
 	GPIO0_DATA(7, 1);  // turn on diagnostic led
+
 	
-	// Setup ADC
-	// My geared motor has an optical wheel,
-	// and sensor with analog output.  this
-	// code is just a test to see if the values
-	// coming from the ADC are good... and
-	// it works!
 	
-	SYSCON_PDRUNCFG_ADC(POWER_UP);
-	SYSCON_SYSAHBCLKCTRL_ADC(SYSAHBCLKCTRL_ENABLE);
-	IOCON_PIO1_0_FUNC(PIO1_0_FUNC_ADC);
-	IOCON_PIO1_0_ADMODE(PIO1_0_ADMODE_ANALOG_INPUT);
+	//
+	// Configure SPI 0
+	//
 	
-	ADC_CR_SEL(1, ADC_ENABLE);	// enable sampling on AD1 (pin 9)
-	ADC_CR_CLKDIV(SystemFrequency / 4500000);		// ADC clock must be <= 4.5Mhz
-	ADC_CR_START(ADC_START_START_NOW);	// take a sample
+	// Power on SSP 0
+  SYSCON->SYSAHBCLKCTRL.SSP0 = 1;
+
+	// reset the device
+	SYSCON->PRESETCTRL.SSP0_RST_N = 0;	// assert reset
+	SYSCON->PRESETCTRL.SSP0_RST_N = 1;	// de-assert reset
+
+	// setup clock divisor for SSP0 device
+	SYSCON->SSP0CLKDIV = 2;
 	
-	// sample the ADC and count the edge transitions
-	int revs = 0;
-	bool high = false;
-	uint32_t ledtoggle = 1;
+	// pin 1 - PIO0_8, set to MISO
+	// pin 2 - PIO0_9, set to MOSI
+	// pin 6 - PIO0_6, set to SCK0
+	// pin 25 - PIO0_2, set to SSEL0
+	
+	IOCON->PIO0_8.FUNC = PIO0_8_FUNC_MISO;
+	IOCON->PIO0_9.FUNC = PIO0_9_FUNC_MOSI;
+	IOCON->SCK_LOC.SCKLOC = SCK0_LOC_PIO0_6;
+	IOCON->PIO0_6.FUNC = PIO0_6_FUNC_SCK0;
+	IOCON->PIO0_2.FUNC = PIO0_2_FUNC_SSEL;
+
+	// setup data clock rate to 500Khz
+	// Serial Clock Rate = PCLK / (CPSDVSR * [SCR+1])
+	SSP0CON->CPSR.CPSDVSR = 2;
+	SSP0CON->CR0.SCR = 23;
+
+	SSP0CON->CR0.DSS = SSP_CR0_DSS_8BIT;
+	SSP0CON->CR0.FRF = SSP_CR0_FRF_SPI;
+	SSP0CON->CR0.CPOL = SSP_CR0_CPOL_CLOCK_LOW;
+	SSP0CON->CR0.CPHA = SSP_CR0_CPHA_AWAY_FROM;
+	
+	SSP0CON->CR1.MS = SSP_CR1_MS_MASTER;
+	
+	// empty out FIFO
+	uint32_t data;
+	for (int i = 0; i < SPI_FIFOSIZE; ++i)
+	{
+		data = SSP0CON->DR;
+	}
+
+	// enable SPI controller
+	SSP0CON->CR1.SSE = 1;
+
 	while (1)
 	{
-		revs = 0;
-		high = false;
-		while (revs < 10)
+		for (int j = 0; j < 4096; ++j)
 		{
-			_ADC_GDR sample = ADC_GDR_Sample();	// get a sample
-			if (sample.DONE)
-			{
-				int v = sample.V_VREF;
-				ADC_CR_START(ADC_START_START_NOW);	// trigger another sampling
-				if (high && v < 0x1FF)
-				{
-					high = false;
-					++revs;
-				}
-				else if (!high && v >= 0x1FF)
-				{
-					high = true;
-					++revs;
-				}
-			}
+			Delay(5);
+			SSP0CON->DR = j >> 8;
+			SSP0CON->DR = j & 0xFF;
 		}
-		
-		// we just counted 10 transitions, lets toggle the led
-		ledtoggle = (~ ledtoggle) & 0x1;
-		GPIO0_DATA(7, ledtoggle);  // toggle diagnostic led
 	}
+	
 }

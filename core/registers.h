@@ -47,238 +47,8 @@ inline void FLASHCTRL_FLASHCFG_FLASHTIM(uint32_t val)
 //	LPC_SYSCON Section
 /////////////////////////////////////////////////
 
-// LPC_SYSCON->SYSOSCCTRL
-struct _SYSOSCCTRL
-{
-	uint32_t BYPASS : 1;
-	uint32_t FREQRANGE : 1;
-	uint32_t reserved : 30;
-};
+#include "syscon.h"
 
-#define FREQRANGE_1_20_RANGE 0x0
-#define FREQRANGE_15_25_RANGE 0x1
-
-inline void SYSCON_SYSOSCCTRL_FREQRANGE(uint32_t val)
-{
-	((_SYSOSCCTRL*)&LPC_SYSCON->SYSOSCCTRL)->FREQRANGE = val;
-}
-
-// LPC_SYSCON->PDRUNCFG
-struct _PDRUNCFG
-{
-	uint32_t IRCOUT : 1;
-	uint32_t IRC : 1;
-	uint32_t FLASH : 1;
-	uint32_t BOD : 1;
-	uint32_t ADC : 1;
-	uint32_t SYSOSC : 1;
-	uint32_t WDTOSC : 1;
-	uint32_t SYSPLL : 1;
-	uint32_t reserved : 24;
-};
-#define POWER_UP 0x0
-#define POWER_DOWN 0x1
-
-inline void SYSCON_PDRUNCFG_IRCOUT(uint32_t val)
-{
-	((_PDRUNCFG*)&LPC_SYSCON->PDRUNCFG)->IRCOUT = val;
-}
-inline void SYSCON_PDRUNCFG_SYSOSC(uint32_t val)
-{
-	((_PDRUNCFG*)&LPC_SYSCON->PDRUNCFG)->SYSOSC = val;
-}
-inline void SYSCON_PDRUNCFG_ADC(uint32_t val)
-{
-	((_PDRUNCFG*)&LPC_SYSCON->PDRUNCFG)->ADC = val;
-}
-inline void SYSCON_PDRUNCFG_SYSPLL(uint32_t val)
-{
-	((_PDRUNCFG*)&LPC_SYSCON->PDRUNCFG)->SYSPLL = val;
-}
-
-// LPC_SYSCON->SYSPLLCLKSEL
-struct _SYSPLLCLKSEL
-{
-	uint32_t SEL : 2;
-	uint32_t reserved : 30;
-};
-
-#define SYSPLLCLKSEL_IRC_OSCILLATOR 0x0
-#define SYSPLLCLKSEL_SYSTEM_OSCILLATOR 0x1
-
-inline void SYSCON_SYSPLLCLKSEL(uint32_t val)
-{
-	((_SYSPLLCLKSEL*)&LPC_SYSCON->SYSPLLCLKSEL)->SEL = val;
-}
-
-// LPC_SYSCON->SYSPLLCLKUEN
-struct _SYSPLLCLKUEN
-{
-	uint32_t ENA : 1;
-	uint32_t reserved : 31;
-};
-
-inline void SYSCON_SYSPLLCLKUEN_TOGGLE()
-{
-	//Toggle the system PLL clock source update enable register
-	_SYSPLLCLKUEN* pBits =(_SYSPLLCLKUEN*)&LPC_SYSCON->SYSPLLCLKUEN;
-	pBits->ENA = 0;
-	pBits->ENA = 1;
-}
-
-// LPC_SYSCON->SYSPLLCTRL
-struct _SYSPLLCTRL
-{
-	uint32_t MSEL : 5;
-	uint32_t PSEL : 2;
-	uint32_t reserved : 25;
-};
-
-inline void SYSCON_SYSPLLCTRL(uint32_t m, uint32_t p)
-{
-	// System PLL control register
-	_SYSPLLCTRL* pBits =(_SYSPLLCTRL*)&LPC_SYSCON->SYSPLLCTRL;
-	pBits->MSEL = m;
-	pBits->PSEL = p;
-}
-
-// LPC_SYSCON->SYSPLLSTAT (read only)
-struct _SYSPLLSTAT
-{
-	uint32_t LOCK : 1;
-	uint32_t reserved : 31;
-};
-
-#define PLL_NOTLOCKED 0x0
-#define PLL_LOCKED 0x1
-
-inline void WAIT_SYSCON_SYSPLLSTAT_LOCK()
-{
-	// wait for PLL lock
-	while( PLL_NOTLOCKED == ((_SYSPLLSTAT*)&LPC_SYSCON->SYSPLLSTAT)->LOCK );
-}
-
-// LPC_SYSCON->MAINCLKSEL
-struct _MAINCLKSEL
-{
-	uint32_t SEL : 2;
-	uint32_t reserved : 30;
-};
-
-#define MAINCLKSEL_IRC_OSCILATOR 0x0
-#define MAINCLKSEL_INPUT_CLOCK_SYS_PLL 0x1
-#define MAINCLKSEL_WDT_OSCILATOR 0x2
-#define MAINCLKSEL_SYS_PLL_CLOCK_OUT 0x3
-
-inline void SYSCON_MAINCLKSEL(uint32_t val)
-{
-	((_MAINCLKSEL*)&LPC_SYSCON->MAINCLKSEL)->SEL = val;
-}
-
-// LPC_SYSCON->MAINCLKUEN
-struct _MAINCLKUEN
-{
-	uint32_t ENA : 1;
-	uint32_t reserved : 31;
-};
-
-inline void SYSCON_MAINCLKUEN_TOGGLE()
-{
-	//Toggle main clock source update enable register
-	_MAINCLKUEN* pBits =(_MAINCLKUEN*)&LPC_SYSCON->MAINCLKUEN;
-	pBits->ENA = 0;
-	pBits->ENA = 1;
-}
-
-// LPC_SYSCON->SYSAHBCLKCTRL
-struct _SYSAHBCLKCTRL
-{
-	uint32_t SYS : 1;
-	uint32_t ROM : 1;
-	uint32_t RAM : 1;
-	uint32_t FLASHREG : 1;
-	uint32_t FLASHARRAY : 1;
-	uint32_t I2C : 1;
-	uint32_t GPIO : 1;
-	uint32_t CT16B0 : 1;
-	uint32_t CT16B1 : 1;
-	uint32_t CT32B0 : 1;
-	uint32_t CT32B1 : 1;
-	uint32_t SSP0 : 1;
-	uint32_t UART : 1;
-	uint32_t ADC : 1;
-	uint32_t reserved0 : 1;
-	uint32_t WDT : 1;
-	uint32_t IOCON : 1;
-	uint32_t CAN : 1;
-	uint32_t SSP1 : 1;
-	uint32_t reserved1 : 13;
-};
-
-#define SYSAHBCLKCTRL_DISABLE 0x0
-#define SYSAHBCLKCTRL_ENABLE 0x1
-
-inline void SYSCON_SYSAHBCLKCTRL_I2C(uint32_t val)
-{
-	((_SYSAHBCLKCTRL*)&LPC_SYSCON->SYSAHBCLKCTRL)->I2C = val;
-}
-
-inline void SYSCON_SYSAHBCLKCTRL_GPIO(uint32_t val)
-{
-	((_SYSAHBCLKCTRL*)&LPC_SYSCON->SYSAHBCLKCTRL)->GPIO = val;
-}
-
-inline void SYSCON_SYSAHBCLKCTRL_CT16B0(uint32_t val)
-{
-	((_SYSAHBCLKCTRL*)&LPC_SYSCON->SYSAHBCLKCTRL)->CT16B0 = val;
-}
-
-inline void SYSCON_SYSAHBCLKCTRL_CT16B1(uint32_t val)
-{
-	((_SYSAHBCLKCTRL*)&LPC_SYSCON->SYSAHBCLKCTRL)->CT16B1 = val;
-}
-
-inline void SYSCON_SYSAHBCLKCTRL_CT32B0(uint32_t val)
-{
-	((_SYSAHBCLKCTRL*)&LPC_SYSCON->SYSAHBCLKCTRL)->CT32B0 = val;
-}
-
-inline void SYSCON_SYSAHBCLKCTRL_CT32B1(uint32_t val)
-{
-	((_SYSAHBCLKCTRL*)&LPC_SYSCON->SYSAHBCLKCTRL)->CT32B1 = val;
-}
-
-inline void SYSCON_SYSAHBCLKCTRL_SSP0(uint32_t val)
-{
-	((_SYSAHBCLKCTRL*)&LPC_SYSCON->SYSAHBCLKCTRL)->SSP0 = val;
-}
-
-inline void SYSCON_SYSAHBCLKCTRL_UART(uint32_t val)
-{
-	((_SYSAHBCLKCTRL*)&LPC_SYSCON->SYSAHBCLKCTRL)->UART = val;
-}
-
-inline void SYSCON_SYSAHBCLKCTRL_ADC(uint32_t val)
-{
-	((_SYSAHBCLKCTRL*)&LPC_SYSCON->SYSAHBCLKCTRL)->ADC = val;
-}
-
-inline void SYSCON_SYSAHBCLKCTRL_IOCON(uint32_t val)
-{
-	((_SYSAHBCLKCTRL*)&LPC_SYSCON->SYSAHBCLKCTRL)->IOCON = val;
-}
-
-// LPC_SYSCON->SYSAHBCLKDIV
-struct _SYSAHBCLKDIV
-{
-	uint32_t DIV : 8;
-	uint32_t reserved : 24;
-};
-
-inline void SYSCON_SYSAHBCLKDIV(uint32_t val)
-{
-	((_SYSAHBCLKDIV*)&LPC_SYSCON->SYSAHBCLKDIV)->DIV = val;
-}
 
 /////////////////////////////////////////////////
 //	LPC_GPIOn Section
@@ -522,6 +292,11 @@ struct IOAD
 	__IO uint32_t reserved2 : 21;
 };
 
+struct IOSCK0_LOC
+{
+	__IO uint32_t SCKLOC : 2;	// SCK0 location
+};
+
 struct _IOCON
 {
   __IO uint32_t PIO2_6;                 /*!< Offset: 0x000 I/O configuration for pin PIO2_6 (R/W) */
@@ -573,7 +348,7 @@ struct _IOCON
   __IO IOSTD PIO1_6;                 /*!< Offset: 0x0A4 I/O configuration for pin PIO1_6/RXD/CT32B0_MAT0 (R/W) */
   __IO IOSTD PIO1_7;                 /*!< Offset: 0x0A8 I/O configuration for pin PIO1_7/TXD/CT32B0_MAT1 (R/W) */
   __IO uint32_t PIO3_3;                 /*!< Offset: 0x0AC I/O configuration for pin PIO3_3/nRI (R/W) */
-  __IO uint32_t SCK_LOC;                /*!< Offset: 0x0B0 SCK pin location select Register (R/W) */
+  __IO IOSCK0_LOC SCK_LOC;                /*!< Offset: 0x0B0 SCK pin location select Register (R/W) */
   __IO uint32_t DSR_LOC;                /*!< Offset: 0x0B4 DSR pin location select Register (R/W) */
   __IO uint32_t DCD_LOC;                /*!< Offset: 0x0B8 DCD pin location select Register (R/W) */
   __IO uint32_t RI_LOC;                 /*!< Offset: 0x0BC RI pin location Register (R/W) */
@@ -608,11 +383,21 @@ struct _IOCON
 #define PIO0_2_FUNC_SSEL 0x1
 #define PIO0_2_FUNC_TIMER 0x2
 
+#define PIO0_3_FUNC_GPIO 0x0
+
 #define PIO0_4_FUNC_GPIO 0x0
 #define PIO0_4_FUNC_I2C_SCL 0x1
 
 #define PIO0_5_FUNC_GPIO 0x0
 #define PIO0_5_FUNC_I2C_SDA 0x1
+
+#define PIO0_6_FUNC_GPIO 0x0
+#define PIO0_6_FUNC_R 0x1		// reserved
+#define PIO0_6_FUNC_SCK0 0x2	// NOTE: pin must be selected in IOCON->SCK_LOC location register
+
+#define SCK0_LOC_PIO0_10 0x0
+#define SCK0_LOC_PIO2_11 0x1
+#define SCK0_LOC_PIO0_6 0x2
 
 #define PIO0_8_FUNC_GPIO 0x0
 #define PIO0_8_FUNC_MISO 0x1
@@ -622,6 +407,10 @@ struct _IOCON
 #define PIO0_9_FUNC_MOSI 0x1
 #define PIO0_9_FUNC_TIMER 0x2
 
+#define PIO0_11_FUNC_R 0x0		// reserved
+#define PIO0_11_FUNC_GPIO 0x1
+#define PIO0_11_FUNC_ADC 0x2
+#define PIO0_11_FUNC_TIMER 0x3
 
 #define PIO1_0_FUNC_R 0x0		// reserved
 #define PIO1_0_FUNC_GPIO 0x1
@@ -734,6 +523,42 @@ inline void IOCON_PIO0_9_FUNC(uint32_t val)
 inline void IOCON_PIO0_9_MODE(uint32_t val)
 {
 	((_PIO0_9*)&LPC_IOCON->PIO0_9)->MODE = val;
+}
+
+
+// LPC_IOCON->R_PIO0_11
+// I/O configuration for pin (4) R/PIO0_11/AD0/CT32B0_MAT3 (R/W)
+struct _PIO0_11
+{
+	uint32_t FUNC : 3;	// pin function
+	uint32_t MODE : 2;	// pull up/down resistor mode
+	uint32_t HYS : 1;		// Hysteresis.
+	uint32_t reserved0 : 1;
+	uint32_t ADMODE : 1;		// Selects Analog/Digital mode
+	uint32_t reserved1 : 2;
+	uint32_t OD : 1;		// Selects pseudo open-drain mode
+	uint32_t reserved2 : 21;
+};
+
+inline void IOCON_PIO0_11_FUNC(uint32_t val)
+{
+	((_PIO0_11*)&LPC_IOCON->R_PIO0_11)->FUNC = val;
+}
+
+#define PIO0_11_MODE_NO_RESISTOR 0x0
+#define PIO0_11_MODE_PULLDOWN_RESISTOR 0x1
+#define PIO0_11_MODE_PULLUP_RESISTOR 0x2
+#define PIO0_11_MODE_REPEATER 0x3
+inline void IOCON_PIO0_11_MODE(uint32_t val)
+{
+	((_PIO0_11*)&LPC_IOCON->R_PIO0_11)->MODE = val;
+}
+
+#define PIO0_11_ADMODE_ANALOG_INPUT 0x0
+#define PIO0_11_ADMODE_DIGITAL 0x1
+inline void IOCON_PIO0_11_ADMODE(uint32_t val)
+{
+	((_PIO0_11*)&LPC_IOCON->R_PIO0_11)->ADMODE = val;
 }
 
 

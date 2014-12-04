@@ -1,5 +1,6 @@
 #include <LPC11xx.h>
 #include "registers.h"
+#include "ssp.h"
 
 #ifndef NO_EXTERN_SYSTEM_FREQUENCY
 extern uint32_t SystemFrequency;

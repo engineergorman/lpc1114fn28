@@ -26,8 +26,6 @@
 #include "stdlib.h"
 #include "stdio.h"
 
-#define HALLTEST
-
 //
 // When the LPC1114FN28 boots up, the pins start
 // hi, then go lo for a short time, then hi again.
@@ -101,7 +99,7 @@ extern "C" void SystemInit(void)
 
 volatile uint64_t g_cycles;
 volatile uint64_t g_curr;
-volatile uint64_t g_prev;
+//volatile uint64_t g_prev;
 
 #if 0
 inline void GetTimer(uint32_t & timer, uint64_t & cycles)
@@ -137,13 +135,13 @@ inline void RecordEvent(uint32_t minor)
 		timer = TMR16B0->TC;
 		cycles += PWM_DUTY_CYCLE;
 		g_cycles = cycles;
-		TMR16B0->IR.MR3 = 0;
+		LPC_TMR16B0->IR = 1<<3;	// clear the interrupt	
 	}
 	
-	g_prev = g_curr;
+//	g_prev = g_curr;
 	if (timer < minor)
 	{
-		g_curr = cycles + ((int32_t)minor - (int32_t)PWM_DUTY_CYCLE);
+		g_curr = (cycles - PWM_DUTY_CYCLE) + minor;
 	}
 	else
 	{
@@ -160,6 +158,7 @@ extern "C" void TIMER16_0_IRQHandler(void)
 		LPC_TMR16B0->CCR = 0;		// disable rising & falling edge and interrupt.  
 														// we use this instead of bit fields because it uses fewer cycles.
 		RecordEvent(TMR16B0->CR0);
+		LPC_TMR16B0->IR = 1<<4;	// clear the interrupt
 		LPC_TMR16B0->CCR = 0x7;		// enable rising & falling edge and interrupt.  
 															// we use this instead of bit fields because it uses fewer cycles.
 	}
@@ -167,8 +166,8 @@ extern "C" void TIMER16_0_IRQHandler(void)
 	if (TMR16B0->IR.MR3)
 	{
 		g_cycles += PWM_DUTY_CYCLE;
+		LPC_TMR16B0->IR = 1<<3;	// clear the interrupt	
 	}
-	LPC_TMR16B0->IR = 0x1F;		// clear all interrupts
 	__NOP();__NOP();	// voodoo... not sure if this is required
 	__enable_irq();
 }
@@ -226,6 +225,7 @@ extern "C" void TIMER32_1_IRQHandler(void)
 	__enable_irq();
 }
 
+#if 0
 inline void GetHallSensorEvent(uint64_t & curr, uint64_t & prev)
 {
 	// try to do an atomic read of the two values
@@ -238,6 +238,7 @@ inline void GetHallSensorEvent(uint64_t & curr, uint64_t & prev)
 		curr = g_curr;
 	}
 }
+#endif
 
 inline void AH(uint32_t duty)
 {
@@ -302,9 +303,12 @@ void SetupPWM16B0()
 	TMR16B0->CCR.RISING_EDGE = CCR_ENABLE;
 	TMR16B0->CCR.FALLING_EDGE = CCR_ENABLE;
 	TMR16B0->CCR.INTERRUPT = CCR_ENABLE;
+	// setup to be able to read
+	IOCON->PIO0_2.FUNC = PIO0_2_FUNC_GPIO;
+	IOCON->PIO0_2.MODE = MODE_PULLUP_RESISTOR;
+	GPIO0_DIR(2, GPIO_INPUT);
 	// setup pin 25 for timer capture input
 	IOCON->PIO0_2.FUNC = PIO0_2_FUNC_TIMER;
-	IOCON->PIO0_2.HYS = HYS_ENABLE;
 #endif
 
 	// setup pins 1,2 for PWM output
@@ -348,9 +352,12 @@ void SetupPWM16B1()
 	TMR16B1->CCR.RISING_EDGE = CCR_ENABLE;
 	TMR16B1->CCR.FALLING_EDGE = CCR_ENABLE;
 	TMR16B1->CCR.INTERRUPT = CCR_ENABLE;
+	// setup to be able to read
+	IOCON->PIO1_8.FUNC = PIO1_8_FUNC_GPIO;
+	IOCON->PIO1_8.MODE = MODE_PULLUP_RESISTOR;
+	GPIO1_DIR(8, GPIO_INPUT);
 	// setup pin 17 for timer capture input
 	IOCON->PIO1_8.FUNC = PIO1_8_FUNC_TIMER;
-	IOCON->PIO1_8.HYS = HYS_ENABLE;
 #endif
 
 	// setup pin 18 for PWM output
@@ -430,9 +437,12 @@ void SetupPWM32B1()
 	TMR32B1->CCR.RISING_EDGE = CCR_ENABLE;
 	TMR32B1->CCR.FALLING_EDGE = CCR_ENABLE;
 	TMR32B1->CCR.INTERRUPT = CCR_ENABLE;
+	// setup to be able to read
+	IOCON->PIO1_0.FUNC = PIO1_0_FUNC_GPIO;
+	IOCON->PIO1_0.MODE = MODE_PULLUP_RESISTOR;
+	GPIO1_DIR(0, GPIO_INPUT);
 	// setup pin 19 for timer capture input
 	IOCON->PIO1_0.FUNC = PIO1_0_FUNC_TIMER;
-	IOCON->PIO1_0.HYS = HYS_ENABLE;
 #endif
 
 	// setup pins 10, 11, 13 for PWM output
@@ -572,8 +582,7 @@ int main(void)
 	uart_write_str("CNC spindle control.\r\n");
 
 	g_cycles = 0;
-	g_curr = 0;
-	g_prev = 0;
+	g_curr = 1;
 
 	for (int j = 0; j < 200000; ++j)  __NOP();
 	
@@ -582,61 +591,38 @@ int main(void)
 	//SetupPWM32B0();
 	SetupPWM32B1();
 	EnableTimers();
-	
+
 	uint64_t curr;
-	uint64_t prev;
-
 	uint64_t last_curr = 0;
-	uint64_t last_prev = 0;
-	char buff[64];
-	sprintf(buff, ".");
-
 	Hall sensorIn;
-	int seq = -1;
+	uint8_t idx;
+	char buff[16];
 	
-#if 0
+#if 1
 	while (1)
 	{
-		GetHallSensorEvent(curr, prev);
+		uart_write_str(".");
+		curr = g_curr;
 		if (curr != last_curr)
 		{
 			sensorIn.h0 = GPIO0_DATA(2) >> 2;
 			sensorIn.h1 = GPIO1_DATA(8) >> 8;
 			sensorIn.h2 = GPIO1_DATA(0);
-			int idx = sensorIn.ToIndex();
+			idx = sensorIn.ToIndex();
 			Phase & phase = g_phases[idx];
 			phase.Engage(500);
 
-			if (seq == -1)
-			{
-				seq = LookupHallSeq(idx);
-			}
-			else
-			{
-				if (idx != g_hallSequence[seq].ToIndex())
-				{
-					int tmp = LookupHallSeq(idx);
-					sprintf(buff, "should be = %d,  actual = %d \r\n", seq, tmp );
-					uart_write_str(buff);
-					seq = tmp;
-				}
-			}
-			seq = (seq + 1) % 6;
-
-// 			int64_t delta = (int64_t)curr - (int64_t)prev;
-// 			sprintf(buff, "%lld   %d %d %d  %d\r\n", delta, sensorIn.h0, sensorIn.h1, sensorIn.h2, idx );
-// 			uart_write_str(buff);
- 			//uart_write_str(buff);
-
+			buff[0] = '0' + idx;
+			buff[1] = 0;
+			uart_write_str(buff);
+			
 			last_curr = curr;
-			last_prev = prev;
 		}
 	}
-
 #endif
 
-#if 1
-	int lastIdx = -1;
+#if 0
+	int power = 10;
 	while (1)
 	{
 		sensorIn.h0 = GPIO0_DATA(2) >> 2;
@@ -646,11 +632,11 @@ int main(void)
 		if (idx != lastIdx)
 		{
 			Phase & phase = g_phases[idx];
-			phase.Engage(1000);
+			phase.Engage(power);
 			lastIdx = idx;
+			if (power < 2250) ++power;
 		}
 	}
-
 #endif
 
 #if 0

@@ -85,7 +85,7 @@ int main(void)
 	int pos = 0;
 	
 	char buffer[64];
-	char str[] = "fan control: fXX, where XX is a number from 0-99.\r\n";
+	char str[] = "Simple PWM fan control: fXX, where XX is a number from 00-99.\r\n";
 	char ack[] = "\r\nok.\r\n";
 	uart_write_str(str);
 	
@@ -109,6 +109,7 @@ int main(void)
 					if (pos == 3)
 					{
 						int val = (cmdbuff[1] - '0') * 10 + (cmdbuff[2] - '0');
+						val = 99 - val;
 						TMR16B0_MR0_Set(val);
 						uart_write_str(ack);
 					}
