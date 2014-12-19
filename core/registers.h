@@ -379,6 +379,10 @@ struct _IOCON
 #define HYS_DISABLE 0x0
 #define HYS_ENABLE 0x1
 
+#define PIO0_1_FUNC_GPIO 0x0
+#define PIO0_1_FUNC_CLKOUT 0x1
+#define PIO0_1_FUNC_TIMER 0x2
+
 #define PIO0_2_FUNC_GPIO 0x0
 #define PIO0_2_FUNC_SSEL 0x1
 #define PIO0_2_FUNC_TIMER 0x2

@@ -334,6 +334,18 @@ void write_buffer(uint8_t *buf)
 
 //////////////////////////////////////////////////////
 
+volatile uint32_t g_encoder;
+
+extern "C" void PIOINT1_IRQHandler(void)
+{
+	// TODO: noise filtering
+	if (GPIO1_MIS(0))
+	{
+		g_encoder = SysTickCnt;
+		GPIO1_IC(0);
+		__NOP();__NOP();
+	}
+}
 
 
 int main(void)
@@ -344,7 +356,7 @@ int main(void)
 	// Enable clock to IO Configuration block.  Needed for UART, SPI, I2C, etc...
 	SYSCON_SYSAHBCLKCTRL_IOCON(SYSAHBCLKCTRL_ENABLE);
 	
-  SysTick_Config(SystemFrequency/1000 - 1); // Generate interrupt each 1 ms
+  SysTick_Config(SystemFrequency/10000 - 1); // Generate interrupt each .1 ms
 	
 	// set direction on port 0_7 (pin 28) to output
 	GPIO0_DIR(7, GPIO_OUTPUT);	
@@ -418,6 +430,23 @@ int main(void)
 	// enable SPI controller
 	SSP0CON->CR1.SSE = 1;
 	
+	//
+	//  setup the rotary encoder interrupt
+	//
+	
+	// setup interrupts on PIO1_0
+	IOCON_PIO1_0_MODE(PIO1_0_MODE_NO_RESISTOR);
+	GPIO1_DIR(0, GPIO_INPUT);	
+	GPIO1_IS(0, GPIO_EDGE_SENSITIVE);
+	GPIO1_IBE(0, GPIO_SINGLE_EDGE);
+	GPIO1_IEV(0, GPIO_FALLING_EDGE);
+	GPIO1_IE(0, GPIO_INTERRUPT_ENABLE);
+
+	IOCON_PIO1_1_MODE(PIO1_1_MODE_NO_RESISTOR);
+	GPIO1_DIR(1, GPIO_INPUT);	
+
+	NVIC_EnableIRQ(EINT1_IRQn);
+
 	
 	//test_display();
 
@@ -426,26 +455,122 @@ int main(void)
 	GPIO0_DIR(11, GPIO_OUTPUT);
 	GPIO0_DATA(11, 1);	// set to hi to deselect the DAC
 
-	Delay(1);
-	GPIO0_DATA(11, 0);	// set to low to select the DAC
-	Delay(1);
-	int j = 257;
-	SSP0CON->DR = j >> 8;
-	SSP0CON->DR = j & 0xFF;
-	Delay(1);
-	GPIO0_DATA(11, 1);	// set to hi
-	Delay(1);
+	// pin 24 (0_1) is connected to FET gating 100 Ohm current measurement 
+	IOCON->PIO0_1.FUNC = PIO0_1_FUNC_GPIO;
+	GPIO0_DIR(1, GPIO_OUTPUT);
+	GPIO0_DATA(1, 1);	// set to high to select 
 
-	int res100 = 0;
+	int dacVal = -1;
+	int updateDacVal = 0;
+	g_encoder = 0;
+	int onDownCycle = 1;
+	int lastUpdate = 0;
+	int accel = 1;
 	while (1)
 	{
-		// pin 9 (1_0) is connected to FET gating 10 Ohm current measurement 
-		IOCON->PIO1_0.FUNC = PIO1_0_FUNC_GPIO;
-		GPIO1_DIR(0, GPIO_OUTPUT);
-		GPIO1_DATA(0, res100);	// set to high to select 
-
-		Delay(3000);
-		res100 = res100 ? 0 : 1;
+		if (g_encoder)
+		{
+			uint32_t currTime = SysTickCnt;
+			uint32_t encoderTime = g_encoder;
+			
+			uint32_t delta;
+			if (currTime  < encoderTime)
+			{
+				delta = (0xFFFFFFFF - encoderTime) + currTime;
+			}
+			else
+			{
+				delta = currTime - encoderTime;
+			}
+			
+			if (delta > 2)
+			{
+				int b = GPIO1_DATA(1);
+				int a = GPIO1_DATA(0);
+				
+				int doTransition = 1;
+				if (onDownCycle)
+				{
+					if (0 == a)
+					{
+						// transition to up cycle
+						doTransition = 0;
+						onDownCycle = 0;
+						GPIO1_IEV(0, GPIO_RISING_EDGES);
+					}
+				}
+				else
+				{
+					// looking for the up transition
+					if (1 == a)
+					{
+						// we have completed one full cycyle
+						if (lastUpdate < currTime)
+						{
+							delta = currTime - lastUpdate;
+						}
+						else
+						{
+							delta = (0xFFFFFFFF - lastUpdate) + currTime;
+						}
+						if (delta < 250)	// 25 msec between clicks
+						{
+							++accel;
+						}
+						else
+						{
+							--accel;
+						}
+						accel = (accel < 1) ? 1 : accel;
+						accel = (accel > 100) ? 100 : accel;
+						lastUpdate = currTime;
+						
+						updateDacVal += (b ? -1 : 1) * accel;
+					}
+				}
+				if (doTransition)
+				{
+					onDownCycle = 1;
+					GPIO1_IEV(0, GPIO_FALLING_EDGE);
+				}
+				g_encoder = 0;
+			}
+		}
+		else
+		{
+			// need to bring down accel if we have fewer clicks
+			uint32_t currTime = SysTickCnt;
+			uint32_t delta;
+			if (lastUpdate < currTime)
+			{
+				delta = currTime - lastUpdate;
+			}
+			else
+			{
+				delta = (0xFFFFFFFF - lastUpdate) + currTime;
+			}
+			if (delta > 250)
+			{
+				--accel;
+			}
+			accel = (accel < 1) ? 1 : accel;			
+		}
+		
+		if (updateDacVal != dacVal)
+		{
+			updateDacVal = (updateDacVal < 0) ? 0 : updateDacVal;
+			updateDacVal = (updateDacVal > 4095) ? 4095 : updateDacVal;
+			dacVal = updateDacVal;
+			
+			Delay(1);
+			GPIO0_DATA(11, 0);	// set to low to select the DAC
+			Delay(1);
+			SSP0CON->DR = dacVal >> 8;
+			SSP0CON->DR = dacVal & 0xFF;
+			Delay(1);
+			GPIO0_DATA(11, 1);	// set to hi
+			Delay(1);
+		}
 	}
 	
 #if 0
